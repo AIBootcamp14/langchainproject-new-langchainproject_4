@@ -2,13 +2,28 @@
 
 from fastapi import FastAPI
 from dotenv import load_dotenv
-from .schemas.rag_schema import QuestionRequest, AnswerResponse
 from typing import List
+from pydantic import BaseModel, Field # Pydantic 임포트 추가
+
+# 💡 1. Pydantic 모델 정의 통합 (API 입출력 스키마)
+class QuestionRequest(BaseModel):
+    """
+    API로 들어오는 사용자 질문 요청 스키마
+    """
+    question: str = Field(..., description="사용자가 챗봇에게 던지는 질문")
+
+class AnswerResponse(BaseModel):
+    """
+    RAG 챗봇의 답변 및 참조 출처를 포함하는 응답 스키마
+    """
+    answer: str = Field(..., description="LLM이 생성한 최종 답변")
+    sources: List[str] = Field(..., description="답변에 사용된 문서의 출처 URL 리스트")
+
 
 # .env 파일 로드 (SOLAR_API_KEY 등을 환경 변수로 가져옴)
 load_dotenv() 
 
-# 💡 참고: LLM 및 RAG 모듈은 나중에 통합할 거야
+# 💡 참고: LLM 및 RAG 모듈은 나중에 통합할 예정
 # from .modules.retriever import get_rag_response 
 
 app = FastAPI(
@@ -35,7 +50,6 @@ async def ask_chatbot(request: QuestionRequest):
     # answer, sources = get_rag_response(question)
     
     # 임시 응답 (팀원 2 작업이 완료되기 전까지 사용)
-    # 팀원 2, 3이 API 테스트를 할 수 있도록 명세에 맞는 더미 응답을 반환
     dummy_answer = f"FastAPI 서버 작동 확인: 질문 '{question}'에 대한 답변 준비 중입니다."
     dummy_sources: List[str] = [
         "https://docs.langchain.com/oss/python/integrations/splitter-example1", 
@@ -46,5 +60,3 @@ async def ask_chatbot(request: QuestionRequest):
         answer=dummy_answer,
         sources=dummy_sources
     )
-
-# 💡 참고: uvicorn 명령어로 실행됨: uvicorn main:app --host 0.0.0.0 --port 8000

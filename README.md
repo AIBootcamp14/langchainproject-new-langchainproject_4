@@ -4,8 +4,7 @@
 
 프로젝트의 모듈별 역할은 아래와 같습니다.
 
-```bash
-.
+```
 ├── .github/
 ├── data/
 │   ├── raw/
@@ -28,9 +27,7 @@
 ├── docker-compose.yml             # Docker 통합 실행 설정 파일 (팀장)
 ├── Dockerfile                     # Docker 이미지 빌드 파일 (팀장)
 └── README.md
-
-
-
+```
 
  
 

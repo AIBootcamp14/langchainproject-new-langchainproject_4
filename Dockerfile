@@ -26,12 +26,14 @@ ENV PYTHONUNBUFFERED 1
 # 빌드 단계에서 설치된 라이브러리 복사
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 
+# 실행 파일(uvicorn 포함)이 있는 /usr/local/bin 디렉토리를 복사
+COPY --from=builder /usr/local/bin /usr/local/bin
+
 # 소스 코드 복사 (requirements.txt는 이미 설치됨)
 COPY src/ src/
-COPY main.py .
 
 # FastAPI의 기본 포트 8000 노출
 EXPOSE 8000
 
 # uvicorn으로 FastAPI 앱 실행 (main.py의 app 객체를 호스팅)
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,7 +1,5 @@
 # docker-compose.yml
 
-version: '3.8'
-
 services:
   # 1. RAG API 서버 (너의 담당)
   rag_api:

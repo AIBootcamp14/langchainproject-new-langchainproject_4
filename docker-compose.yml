@@ -1,0 +1,44 @@
+# docker-compose.yml
+
+version: '3.8'
+
+services:
+  # 1. RAG API 서버 (너의 담당)
+  rag_api:
+    build: . # 현재 디렉토리의 Dockerfile 사용
+    container_name: rag_chatbot_api
+    
+    # 8000번 포트 연결
+    ports:
+      - "8000:8000"
+      
+    # .env 파일에서 환경 변수(SOLAR_API_KEY 등) 로드
+    env_file:
+      - .env
+      
+    # DB가 먼저 실행되도록 의존성 설정
+    depends_on:
+      - vector_db 
+      
+    # DB 컨테이너의 이름을 환경 변수로 주입 (DB 연결 시 사용)
+    environment:
+      - CHROMA_HOST=vector_db 
+      - CHROMA_PORT=8000
+
+  # 2. Vector DB (팀원 5의 담당 - ChromaDB 독립 서버 모드)
+  vector_db:
+    image: chromadb/chroma:latest # 공식 ChromaDB Docker 이미지
+    container_name: chroma_vector_db
+    
+    # ChromaDB의 기본 포트 8000을 호스트의 8001번 포트에 연결 (충돌 방지)
+    ports:
+      - "8001:8000" 
+      
+    # 벡터 DB 데이터 영구 저장을 위한 볼륨 설정 (데이터 유실 방지)
+    volumes:
+      - chroma_data:/app/chroma/data 
+
+# 볼륨 정의 (영구 데이터 저장소)
+volumes:
+  chroma_data:
+    driver: local

@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  # ChromaDB 서버
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: langchain-chromadb
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data/chroma_docker:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+      - ANONYMIZED_TELEMETRY=FALSE
+    networks:
+      - langchain-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # LangChain RAG 애플리케이션
+  langchain-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: langchain-rag-app
+    ports:
+      - "8501:8501"  # Streamlit
+      - "5000:5000"  # API (optional)
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./.env:/app/.env
+    environment:
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - PYTHONUNBUFFERED=1
+      - UPSTAGE_API_KEY=${UPSTAGE_API_KEY}
+    depends_on:
+      chromadb:
+        condition: service_healthy
+    networks:
+      - langchain-network
+    restart: unless-stopped
+    command: streamlit run demo_with_memory.py --server.port 8501 --server.address 0.0.0.0
+
+  # SQLite 데이터베이스 (선택사항 - 별도 컨테이너)
+  # sqlite-web:
+  #   image: coleifer/sqlite-web:latest
+  #   container_name: langchain-sqlite-web
+  #   ports:
+  #     - "8080:8080"
+  #   volumes:
+  #     - ./data:/data
+  #   environment:
+  #     - SQLITE_DATABASE=/data/langchain.db
+  #   networks:
+  #     - langchain-network
+  #   restart: unless-stopped
+
+networks:
+  langchain-network:
+    driver: bridge
+
+volumes:
+  chroma-data:
+    driver: local
+  app-data:
+    driver: local

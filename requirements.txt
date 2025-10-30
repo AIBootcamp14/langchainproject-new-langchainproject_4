@@ -1,0 +1,49 @@
+# LangChain RAG 팀 협업 - 미션 1 & 2
+# Python 3.10+
+
+# === 미션 1: 크롤링 + 청킹 ===
+# LangChain 핵심
+langchain==0.1.0
+langchain-community==0.0.13
+
+# 웹 크롤링
+beautifulsoup4==4.12.2
+requests==2.31.0
+selenium==4.15.2
+webdriver-manager==4.0.1
+
+# HTML/마크다운 파싱
+html2text==2020.1.16
+markdownify==0.11.6
+
+# === 미션 2: 임베딩 + Vector DB ===
+# Upstage API
+langchain-upstage==0.1.0
+
+# Vector Database
+chromadb==0.4.22
+
+# 임베딩 및 벡터 연산
+sentence-transformers==2.2.2
+numpy==1.24.3
+
+# === 공통 의존성 ===
+# 환경 변수
+python-dotenv==1.0.0
+
+# 데이터 처리
+pandas==2.1.4
+
+# 유틸리티
+tqdm==4.66.1
+pydantic==2.5.3
+
+# 로깅
+loguru==0.7.2
+
+# === 선택적 의존성 (필요시 설치) ===
+# Docker Python SDK (선택)
+# docker==7.0.0
+
+# SQLite 확장 (기본 포함됨)
+# 추가 설치 불필요

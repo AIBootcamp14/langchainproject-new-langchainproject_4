@@ -8,7 +8,7 @@ html2text~=2024.2.26    # 크롤링된 HTML을 텍스트로 변환
 tiktoken~=0.6.0         # 토큰화 유틸리티
 
 # 2. LLM & Embedding (Solar API 클라이언트)
-upstage
+langchain-upstage~=0.1.0
 
 # 3. Vector Database
 chromadb~=0.4.24

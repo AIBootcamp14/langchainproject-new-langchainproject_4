@@ -2,23 +2,32 @@
 
 # 1. RAG Core & Data Model
 langchain~=0.1.20
+langchain-community~=0.0.38
+langchain-core~=0.1.53
 pydantic~=2.7.1
-beautifulsoup4~=4.12.3  # 웹 크롤링 시 HTML 파싱 보조
-html2text~=2024.2.26    # 크롤링된 HTML을 텍스트로 변환
-tiktoken~=0.6.0         # 토큰화 유틸리티
+beautifulsoup4~=4.12.3
+html2text~=2024.2.26
+tiktoken~=0.6.0
 
 # 2. LLM & Embedding (Solar API 클라이언트)
 langchain-upstage~=0.1.0
 
-# 3. Vector Database
+# 3. Vector Database & Embeddings
 chromadb~=0.4.24
+# 💡 [신규 추가] sentence-transformers: 한국어 임베딩 옵션 (vector_database.py 참고)
+sentence-transformers~=2.2.2
 
 # 4. API Server
 fastapi~=0.110.0
 uvicorn[standard]~=0.28.0
 
 # 5. UI
-streamlit~=1.32.2       # Streamlit을 UI 프레임워크로 확정
+streamlit~=1.32.2
 
 # 6. Utilities & Environment
-python-dotenv~=1.0.1    # 환경 변수 로드
+python-dotenv~=1.0.1
+
+# 💡 [신규 추가] Web Crawling 의존성
+requests~=2.31.0
+selenium~=4.15.2
+webdriver-manager~=4.0.1

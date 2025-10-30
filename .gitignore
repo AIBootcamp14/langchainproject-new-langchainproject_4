@@ -1,1 +1,13 @@
 .env
+.venv/
+.gitignore
+
+.github/
+
+
+
+LLM 프로젝트 멘토링 OT_251028.pdf
+01_웹검색_ReAct_Agent_만들기.ipynb
+02_관련성여부를_평가하는_RAG_에이전트_만들기.ipynb
+월간AI브리프_2208_F.pdf
+

@@ -43,14 +43,14 @@ COPY src/ src/
 # 데이터 디렉토리 생성 (RAG 시스템/DB/로그 저장을 위해 필수)
 RUN mkdir -p /app/data/chroma_db /app/data/raw /app/data/processed /app/logs
 
-# FastAPI의 기본 포트 8000 노출
-EXPOSE 8000
+# FastAPI의 기본 포트 8080 노출 (docker-compose와 포트 통일)
+EXPOSE 8080
 # Streamlit 포트 노출 (프론트엔드용)
 EXPOSE 8501
 
-# 헬스체크 설정 (FastAPI 포트 8000 사용)
+# 헬스체크 설정 (FastAPI 포트 8080 사용)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:8000/ || exit 1
+    CMD curl -f http://localhost:8080/ || exit 1
 
 # 기본 실행 명령: uvicorn으로 FastAPI 앱 실행
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8080"]

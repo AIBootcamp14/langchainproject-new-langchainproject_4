@@ -8,7 +8,7 @@ html2text~=2024.2.26    # 크롤링된 HTML을 텍스트로 변환
 tiktoken~=0.6.0         # 토큰화 유틸리티
 
 # 2. LLM & Embedding (Solar API 클라이언트)
-langchain-upstage~=0.1.0
+langchain-upstage~=0.1.0 # Solar LLM 및 임베딩 클라이언트
 
 # 3. Vector Database
 chromadb~=0.4.24
@@ -22,3 +22,7 @@ streamlit~=1.32.2       # Streamlit을 UI 프레임워크로 확정
 
 # 6. Utilities & Environment
 python-dotenv~=1.0.1    # 환경 변수 로드
+# --- RAGAS 평가 프레임워크 추가 (팀원 3 담당) ---
+ragas~=0.1.0             # RAGAS 평가 코어 라이브러리 (버전은 호환성을 위해 최신 안정 버전 확인)
+datasets~=2.18.0        # RAGAS가 데이터를 로드할 때 사용하는 Hugging Face Dataset 라이브러리
+# ----------------------------------------------------

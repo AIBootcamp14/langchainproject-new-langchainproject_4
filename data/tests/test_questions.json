@@ -1,0 +1,62 @@
+[
+  {
+    "id": 1,
+    "question": "LangChain Expression Language (LCEL)을 사용하여 간단한 Prompt, Model, OutputParser 체인을 구성하는 파이썬 코드를 보여줘.",
+    "expected_answer": "LCEL을 사용하면 파이프(|) 연산자로 컴포넌트를 연결하여 효율적으로 체인을 구성할 수 있습니다. 예시 코드는 다음과 같습니다. (여기에 실제 LCEL 코드가 들어가야 함)...",
+    "source_url": "[https://python.langchain.com/docs/expression_language/](https://python.langchain.com/docs/expression_language/)"
+  },
+  {
+    "id": 2,
+    "question": "RAG 애플리케이션에서 ChromaDB 벡터 저장소에 문서를 저장하려면 어떤 단계를 거쳐야 해?",
+    "expected_answer": "문서 로드, 청킹, 임베딩 모델 선택 후, Chroma.from_documents() 메서드를 사용해 저장합니다. 필요한 임포트와 코드 예시는 다음과 같습니다....",
+    "source_url": "[https://python.langchain.com/docs/integrations/vectorstores/chroma/](https://python.langchain.com/docs/integrations/vectorstores/chroma/)"
+  },
+  {
+    "id": 3,
+    "question": "LangChain에서 ReAct 프롬프트 구조는 어떻게 정의하고 Agent에 적용할 수 있어?",
+    "expected_answer": "ReAct 프롬프트는 Thought, Action, Action Input을 포함하는 구조로, Agent가 추론하고 행동하도록 돕습니다. 프롬프트 템플릿 정의와 Agent 초기화 예시 코드를 참고하세요....",
+    "source_url": "[https://python.langchain.com/docs/modules/agents/agent_types/react/](https://python.langchain.com/docs/modules/agents/agent_types/react/)"
+  },
+  {
+    "id": 4,
+    "question": "RecursiveCharacterTextSplitter를 사용할 때, 코드 블록을 보존하기 위한 청킹 전략(청크 크기, 오버랩)을 어떻게 설정해야 해?",
+    "expected_answer": "코드 블록이 쪼개지지 않도록 chunk_size는 일반적인 함수 길이보다 크게 설정하고, 청크 오버랩(chunk_overlap)을 겹치게 하여 문맥을 보존해야 합니다. 구체적인 파라미터 예시는...",
+    "source_url": "[https://python.langchain.com/docs/modules/data_connection/document_loaders/html/](https://python.langchain.com/docs/modules/data_connection/document_loaders/html/)"
+  },
+  {
+    "id": 5,
+    "question": "LangChain의 Chatbot Memory 중에서 가장 간단하게 대화 기록을 유지하는 방법과 코드는 뭐야?",
+    "expected_answer": "가장 간단한 방법은 ConversationBufferMemory를 사용하는 것입니다. 체인을 초기화할 때 memory 파라미터를 통해 이를 적용하는 코드 예시입니다....",
+    "source_url": "[https://python.langchain.com/docs/how_to/chatbots_memory/](https://python.langchain.com/docs/how_to/chatbots_memory/)"
+  },
+  {
+    "id": 6,
+    "question": "LangChain에서 지원하는 Document Loader 목록을 3가지 이상 제시하고, 각 Loader의 용도를 설명해줘.",
+    "expected_answer": "WebBaseLoader(웹페이지), PyPDFLoader(PDF 파일), CSVLoader(CSV 파일) 등이 있으며, 각각의 용도는 이러이러합니다....",
+    "source_url": "[https://python.langchain.com/docs/modules/data_connection/document_loaders/](https://python.langchain.com/docs/modules/data_connection/document_loaders/)"
+  },
+  {
+    "id": 7,
+    "question": "LangChain 공식 문서에서 'Self-Correction LLM'에 대한 내용은 찾아볼 수 없어. 이 주제에 대해 답변해줄 수 있니?",
+    "expected_answer": "공식 문서에 'Self-Correction LLM'에 대한 직접적인 내용은 없습니다.",
+    "source_url": null
+  },
+  {
+    "id": 8,
+    "question": "Ragas 프레임워크를 사용하여 RAG 체인의 Faithfulness (사실 충실도) 지표를 측정하는 파이썬 코드를 알려줘.",
+    "expected_answer": "Ragas에서 Faithfulness를 측정하려면 Dataset과 Metrics를 준비하고, evaluate() 함수를 사용해야 합니다. 관련 코드 예시와 필요한 임포트는 다음과 같습니다....",
+    "source_url": "[https://docs.ragas.io/en/latest/concepts/metrics/faithfulness.html](https://docs.ragas.io/en/latest/concepts/metrics/faithfulness.html)"
+  },
+  {
+    "id": 9,
+    "question": "LangChain API가 아닌 다른 LLM 통합 프레임워크인 'LlamaIndex'의 특징에 대해 설명해줘.",
+    "expected_answer": "참고 자료는 LangChain 공식 문서만을 기반으로 제공됩니다. 제공된 참고 자료에는 LlamaIndex의 특징에 대한 구체적인 내용이 없습니다.",
+    "source_url": null
+  },
+  {
+    "id": 10,
+    "question": "LangChain Expression Language (LCEL)에서 RunnableMap을 언제, 왜 사용해야 하는지 예시 코드로 설명해줘.",
+    "expected_answer": "RunnableMap은 여러 입력을 동시에 처리하여 체인의 병렬 처리를 가능하게 합니다. 특히 서로 다른 LLM이나 리트리버를 조합할 때 유용하며, 예시 코드는...",
+    "source_url": "[https://python.langchain.com/docs/expression_language/map/](https://python.langchain.com/docs/expression_language/map/)"
+  }
+]

@@ -28,7 +28,7 @@ def _check_api_key(api_key: Optional[str]) -> None:
         )
 
 
-def get_llm(
+def get_solar_llm(
     model: str = "solar-pro",
     temperature: float = 0.1,
     max_tokens: int = 2000,
@@ -86,7 +86,7 @@ def get_embeddings(
     )
 
 
-def get_sql_llm() -> BaseChatModel:
+def get_solar_sql_llm() -> BaseChatModel:
     """
     Text-to-SQL 전용 LLM 인스턴스를 반환합니다.
     정확한 SQL 생성을 위해 온도를 0으로 설정합니다.
@@ -94,7 +94,7 @@ def get_sql_llm() -> BaseChatModel:
     Returns:
         SQL 생성용 ChatUpstage 인스턴스.
     """
-    return get_llm(
+    return get_solar_llm(
         model="solar-pro",
         temperature=0.0,
         max_tokens=1000,
@@ -107,7 +107,7 @@ def test_connection() -> bool:
     LLM 및 임베딩 연결을 테스트합니다.
     """
     try:
-        llm = get_llm()
+        llm = get_solar_llm()
         # 간단한 호출로 연결 테스트
         llm.invoke("안녕", max_tokens=1)
         print("✓ LLM 연결 성공 (solar-pro)")

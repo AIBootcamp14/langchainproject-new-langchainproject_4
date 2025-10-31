@@ -1,3 +1,10 @@
+# data scraping 하고 vector 데이터베이스 구축 한 파일 추가함 
+
+- langchain_docs.json 은 langchin 기술 문서에서 스크래핑 한 데이터임.
+- faiss_langchain_db 는 스크래핑한 데이터로 vector 데이터베이스를 생성함.
+- 작업 했던 코드는 vectorDB.ipynb
+
+
 # 기술 문서 기반 RAG 챗봇 구축 프로젝트
 
 30일 5시~6시 멘토링  

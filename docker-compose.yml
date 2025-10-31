@@ -1,42 +1,64 @@
-# docker-compose.yml
+version: '3.8'
 
 services:
-  # 1. RAG API 서버 (너의 담당)
-  rag_api:
-    build: . # 현재 디렉토리의 Dockerfile 사용
-    container_name: rag_chatbot_api
-    
-    # 8000번 포트 연결
+  # --- 1. Vector Database: ChromaDB ---
+  chromadb:
+    image: chromadb/chroma:0.4.24 # 💡 버전 명시: latest 대신 특정 버전을 사용해 안정성 확보
+    container_name: vector_db # 💡 컨테이너 이름 단순화 및 env 파일과의 통일 (CHROMA_HOST=vector_db)
     ports:
       - "8000:8000"
-      
-    # .env 파일에서 환경 변수(SOLAR_API_KEY 등) 로드
-    env_file:
-      - .env
-      
-    # DB가 먼저 실행되도록 의존성 설정
-    depends_on:
-      - vector_db 
-      
-    # DB 컨테이너의 이름을 환경 변수로 주입 (DB 연결 시 사용)
-    environment:
-      - CHROMA_HOST=vector_db 
-      - CHROMA_PORT=8000
-
-  # 2. Vector DB (팀원 5의 담당 - ChromaDB 독립 서버 모드)
-  vector_db:
-    image: chromadb/chroma:latest # 공식 ChromaDB Docker 이미지
-    container_name: chroma_vector_db
-    
-    # ChromaDB의 기본 포트 8000을 호스트의 8001번 포트에 연결 (충돌 방지)
-    ports:
-      - "8001:8000" 
-      
-    # 벡터 DB 데이터 영구 저장을 위한 볼륨 설정 (데이터 유실 방지)
     volumes:
-      - chroma_data:/app/chroma/data 
+      # 💡 Named Volume 사용: 데이터 영속성 관리에 더 적합
+      - chroma-data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+      - ANONYMIZED_TELEMETRY=FALSE
+    networks:
+      - rag-network # 💡 네트워크 이름 변경: 프로젝트 명확성 확보
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 10s # 💡 간격 단축: 서비스 준비 시간을 줄임
+      timeout: 5s
+      retries: 5
 
-# 볼륨 정의 (영구 데이터 저장소)
+  # --- 2. LangChain RAG Application (FastAPI & Streamlit) ---
+  rag-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rag-application
+    # 💡 ports 수정: FastAPI용 포트 8000과 충돌 피하고, API 전용 포트 8080을 명시
+    ports:
+      - "8501:8501"  # Streamlit UI
+      - "8080:8080"  # FastAPI API (API 서버에 맞춰 5000 대신 8080 사용)
+    volumes:
+      - .:/app # 💡 현재 디렉토리 전체를 마운트: 코드 변경 시 재빌드 없이 바로 반영 (개발 용이성)
+      - /app/node_modules # 💡 node_modules가 있다면 볼륨 마운트 대상에서 제외
+    environment:
+      # 💡 ChromaDB 호스트 이름을 컨테이너 이름과 일치시켜 모듈에서 환경 변수(CHROMA_HOST) 사용 용이하게 함
+      - CHROMA_HOST=vector_db
+      - CHROMA_PORT=8000
+      - PYTHONUNBUFFERED=1
+      # 💡 SOLAR_API_KEY로 환경 변수 이름 통일 (llm.py에서 사용)
+      - SOLAR_API_KEY=${SOLAR_API_KEY} 
+      # 💡 API 키 변수 이름을 프로젝트 기준(SOLAR_API_KEY)으로 통일하는 것을 권장
+    depends_on:
+      chromadb:
+        condition: service_healthy
+    networks:
+      - rag-network
+    restart: unless-stopped
+    # 💡 command 수정: main.py를 uvicorn으로 실행하도록 기본 명령 변경 (API 서버가 주 역할)
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8080 --reload
+
+# --- 3. Network Definition ---
+networks:
+  rag-network:
+    driver: bridge
+
+# --- 4. Volume Definition (데이터 영속성) ---
 volumes:
-  chroma_data:
-    driver: local
+  chroma-data:
+    driver: local # ChromaDB 데이터 저장소 (./data/chroma_docker 폴더에 저장됨)

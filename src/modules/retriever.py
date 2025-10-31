@@ -53,6 +53,11 @@ def get_source_aware_rag_chain(vectorstore: VectorStore) -> RAGChain:
     # setup_and_retrieval의 출력에 'answer' 키를 추가하는 방식으로 최종 결과를 구성
     final_chain: RAGChain = setup_and_retrieval.assign(
         answer=answer_generation,
+    ).assign(
+        # 💡💡💡 'docs' 키를 'source_documents'로 이름 변경하여 main.py와 맞춤 💡💡💡
+        source_documents=lambda x: x["docs"],
+    ).with_config(
+        output_keys=["answer", "source_documents"] # 불필요한 키 제거
     )
     
     return final_chain

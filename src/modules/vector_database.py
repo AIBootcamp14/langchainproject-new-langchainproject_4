@@ -39,8 +39,15 @@ class VectorDatabaseClient:
             collection_name: 컬렉션 이름.
             embedding_model: 사용할 임베딩 모델 이름.
         """
-        # 호스트 설정: 환경변수에서 가져오거나 기본값 사용
-        self.host = host or os.getenv("CHROMA_HOST", "localhost")
+        # 호스트 설정 수정: 환경변수 CHROMA_HOST 값이 'vector_db'로 설정되어 있으면 
+        # 로컬 실행 시 강제로 'localhost'로 변경해 줘야 해.
+        resolved_host = host or os.getenv("CHROMA_HOST", "localhost")
+        
+        # 🌟🌟🌟 이 조건문을 추가해 줘 🌟🌟🌟
+        if resolved_host == "vector_db":
+            resolved_host = "localhost" # 로컬 환경에서 실행할 경우 'vector_db' 대신 'localhost' 사용
+
+        self.host = resolved_host
         self.port = port or int(os.getenv("CHROMA_PORT", "8000"))
         self.collection_name = collection_name
 

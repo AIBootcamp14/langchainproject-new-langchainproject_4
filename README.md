@@ -1,6 +1,61 @@
+코딩 표준 (PEP 8, 20, 484)	모든 스타일 코드는 PEP 8(스타일) , PEP 20(철학) , PEP 484(스타일) 준수
+자동 포맷팅 도구(예: Black, isort)를 프로젝트에 삽입해서 코딩 스타일을 미리 방지
+
+|팀장|팀원|팀원|팀원|
+| :---: | :---: | :---: | :---: |
+|김영|이준영|김광묵|김시진,김동준|
+|구성 및 MLOps|RAG 로직 개발|행동 및 평가|데이터 엔지니어링, Vector DB 구축 및 관리|
+
+<br>
+
+|역할|세부사항|
+| --- | --- |
+| 애플리케이션 & MLOps | API 설계, Docker, 클라우드 배포 |
+| RAG 로직 개발 | LangChain/LlamaIndex 체인 설계, 검색 최적화 |
+| 프롬프트 및 평가 | 환각 방지, 성능 지표(Relevance, Faithfulness) 측정 |
+| 데이터 엔지니어링 | 문서 수집, 기술 문서 Chunking 전략 수립 |
+| 벡터 DB 및 환경 | Vector DB 구축 및 관리 |
+
+
+| **API 사용** | **Solar API** 사용 확정 | `https://www.upstage.ai/pricing` (P.7) 링크 참고하여 API 키 발급 및 관리 |
+| **UI 개발** | **Gradio / Streamlit** 중 택 1 | `demo.py`를 통해 UI 구현 및 `main.py`와 통합 (P.6, P.7) |
+
+
+
+
+
 # 기술 문서 기반 RAG 챗봇 구축 프로젝트
 
-30일 5시~6시 멘토링  
+### 📁 프로젝트 디렉토리 구조
+
+프로젝트의 모듈별 역할은 아래와 같습니다.
+
+```
+├── .github/
+├── data/
+│   ├── raw/
+│   └── tests/
+├── src/
+│   ├── modules/
+│   │   ├── llm.py                 # Solar API 호출 및 설정 (팀원 2)
+│   │   ├── prompts.py             # 환각 방지 시스템 프롬프트 (팀원 3)
+│   │   ├── retriever.py           # RAG 체인 및 검색 로직 (팀원 2)
+│   │   └── vector_database.py     # 벡터 DB 초기화 및 데이터 적재 (팀원 5)
+│   ├── utils/
+│   │   └── chunking_strategy.py   # 문서 구조 기반 청킹 전략 (팀원 4)
+│   ├── demo.py                    # Gradio/Streamlit UI 구현 (팀장)
+│   └── main.py                    # FastAPI 서버 진입점 및 모듈 통합 (팀장)
+├── vectorstore/                   # ChromaDB 등 로컬 Vector DB 저장소 (팀원 5)
+├── .env.example                   # 환경 변수 설정 예시 (API 키)
+├── .gitignore                     
+├── environment.yml                # Conda 환경 설정 파일 (Conda 사용자용)
+├── requirements.txt               # Pip 의존성 라이브러리 목록 (Pip 사용자용)
+├── docker-compose.yml             # Docker 통합 실행 설정 파일 (팀장)
+├── Dockerfile                     # Docker 이미지 빌드 파일 (팀장)
+└── README.md
+```
+
+ 
 
 ### 1. 프로젝트 목표와 배경
 
@@ -157,31 +212,7 @@
 | **MLOps** | Docker 환경 구축 및 클라우드 배포 | `Dockerfile`과 `docker-compose.yml`을 작성하여 DB 환경까지 포함한 **통합 환경**을 클라우드(AWS/GCP)에 배포 |
 | **UI 개발** | `demo.py`를 통한 UI 개발 | **Gradio** 또는 **Streamlit** 중 하나를 선택하여 최종 챗봇 UI를 개발 (P.8) |
 
-### 프로젝트 메인 디렉토리 구조 (모듈 기반) 예시
 
-.
-├── .github/              # 깃헙 협업 및 자동화 설정 (선택사항, 전문가 레벨)
-├── .venv/                # 가상 환경 (각자 PC에서 생성)
-├── data/                 # 데이터 저장소 (크롤링된 원본 문서, 테스트 셋)
-│   ├── raw/              # LangChain 원본 문서 크롤링 파일 (Markdown/HTML)
-│   └── tests/            # 팀원 3이 만든 평가용 질문/답변 테스트 셋
-├── vectorstore/          # 벡터 DB 저장소 (ChromaDB 등 로컬 DB 사용 시)
-├── docs/                 # 프로젝트 문서 (포트폴리오, 발표 자료 등)
-│   └── [README.md](http://readme.md/)         # 프로젝트 핵심 요약 (팀원 3 담당)
-├── src/                  # 소스 코드 메인 디렉토리 (모든 .py 파일)
-│   ├── modules/          # 주요 핵심 로직 모듈
-│   │   ├── [llm.py](http://llm.py/)        # LLM 호출 및 설정 (Solar API 통합)
-│   │   ├── [prompts.py](http://prompts.py/)    # 프롬프트 템플릿 및 엔지니어링 (System Prompt)
-│   │   ├── [retriever.py](http://retriever.py/)  # 검색기 및 RAG 체인 로직 (참조 출처 포함)
-│   │   └── vector_database.py # 벡터 DB 초기화 및 데이터 적재
-│   ├── utils/            # 기타 유틸리티 함수 (청킹, 로깅 등)
-│   │   └── chunking_strategy.py # 팀원 4의 핵심 청킹 로직
-│   ├── [demo.py](http://demo.py/)           # Gradio/Streamlit UI 구현 (챗봇 실행 인터페이스)
-│   └── [main.py](http://main.py/)           # 모든 모듈을 통합하여 실행하는 진입점 (팀장 담당)
-├── Dockerfile            # Docker 이미지 빌드 파일 (팀장 담당)
-├── docker-compose.yml    # Docker 통합 실행 파일 (팀장 담당)
-├── requirements.txt      # 프로젝트 의존성 라이브러리 목록
-└── .env.example          # 환경 변수 설정 예시 (API 키 등)
 
 ### Git 브랜치 전략 (Git Flow 경량화)
 

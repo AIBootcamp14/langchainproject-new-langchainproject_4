@@ -1,0 +1,38 @@
+# Python Version: 3.11.9 호환성 최적화
+
+# 1. RAG Core & Data Model
+langchain~=0.1.20
+pydantic~=2.7.1
+beautifulsoup4~=4.12.3  # 웹 크롤링 시 HTML 파싱 보조
+html2text~=2024.2.26    # 크롤링된 HTML을 텍스트로 변환
+tiktoken~=0.6.0         # 토큰화 유틸리티
+
+# 2. LLM & Embedding (Solar API 클라이언트)
+langchain-upstage~=0.1.0 # Solar LLM 및 임베딩 클라이언트
+
+# 3. Vector Database
+chromadb~=0.4.24
+sentence-transformers~=2.2.2
+
+# 4. API Server
+fastapi~=0.110.0
+uvicorn[standard]~=0.28.0
+
+# 5. UI
+streamlit~=1.32.2       # Streamlit을 UI 프레임워크로 확정
+
+# 6. Utilities & Environment
+python-dotenv~=1.0.1    # 환경 변수 로드
+# --- RAGAS 평가 프레임워크 추가 (팀원 3 담당) ---
+ragas~=0.1.0             # RAGAS 평가 코어 라이브러리 (버전은 호환성을 위해 최신 안정 버전 확인)
+datasets~=2.18.0        # RAGAS가 데이터를 로드할 때 사용하는 Hugging Face Dataset 라이브러리
+
+# 💡 [신규 추가] Web Crawling 의존성
+requests~=2.31.0
+selenium~=4.15.2
+webdriver-manager~=4.0.1
+
+
+
+
+# ----------------------------------------------------

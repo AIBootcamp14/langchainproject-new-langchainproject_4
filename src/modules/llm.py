@@ -14,7 +14,7 @@ from langchain_core.embeddings import Embeddings
 from langchain_upstage import ChatUpstage, UpstageEmbeddings
 
 # 프로젝트에서는 SOLAR_API_KEY를 환경 변수로 사용함.
-SOLAR_API_KEY_ENV_NAME = "SOLAR_API_KEY"
+SOLAR_API_KEY_ENV_NAME ="UPSTAGE_API_KEY"
 
 
 def _check_api_key(api_key: Optional[str]) -> None:
@@ -66,16 +66,6 @@ def get_embeddings(
 ) -> Embeddings:
     """
     Upstage Solar Embeddings 인스턴스를 반환합니다.
-
-    Args:
-        model: 사용할 임베딩 모델명.
-               - "solar-embedding-1-large": 일반용 (기본값)
-
-    Returns:
-        UpstageEmbeddings 인스턴스.
-
-    Raises:
-        ValueError: API 키가 설정되지 않은 경우.
     """
     api_key = os.getenv(SOLAR_API_KEY_ENV_NAME)
     _check_api_key(api_key)

@@ -49,28 +49,32 @@
     "source": "https://python.langchain.com/docs/modules/agents/tools/custom_tools"
   },
   {
-    "question": "LLMChain과 SequentialChain의 차이점은 무엇인가요?",
-    "expected_answer": "LLMChain은 단일 LLM 호출을 실행하는 가장 기본적인 체인입니다. 반면 SequentialChain은 여러 체인이나 LLM 호출의 출력을 다음 체인의 입력으로 순차적으로 연결하는 역할을 합니다.",
-    "source": "https://python.langchain.com/docs/modules/chains/foundational/sequential_chains"
+    "question": "LCEL을 사용해서 prompt, model, output parser를 연결하는 가장 기본적인 체인 코드 예시를 보여주세요.",
+    "expected_answer": "from langchain_core.prompts import ChatPromptTemplate\nfrom langchain_core.output_parsers import StrOutputParser\nfrom langchain_openai import ChatOpenAI\n\nprompt = ChatPromptTemplate.from_template('tell me a joke about {topic}')\nmodel = ChatOpenAI()\noutput_parser = StrOutputParser()\n\nchain = prompt | model | output_parser\n\nchain.invoke({'topic': 'ice cream'})",
+    "source": "https://python.langchain.com/docs/expression_language/get_started"
   },
-  {
-    "question": "PromptTemplate에서 변수를 동적으로 할당하는 방법은 무엇인가요?",
-    "expected_answer": "PromptTemplate을 생성할 때 input_variables 리스트에 변수 이름을 지정하고, 체인을 실행할 때 해당 변수 이름에 맞는 값을 딕셔너리 형태로 전달하여 동적으로 할당합니다.",
-    "source": "https://python.langchain.com/docs/modules/model_io/prompts/prompt_templates/"
-  },
-  {
-    "question": "LangChain의 콜백(Callback) 시스템은 어떤 용도로 사용되나요?",
-    "expected_answer": "콜백은 LLM 애플리케이션의 다양한 이벤트(예: 체인 시작, LLM 호출, 에러 발생 등)를 로깅, 모니터링, 스트리밍하는 데 사용됩니다. LangSmith와 같은 도구와 연동할 때 핵심적인 역할을 합니다.",
-    "source": "https://python.langchain.com/docs/modules/callbacks/"
-  },
-  {
-    "question": "VectorStoreRetriever에서 검색 유형(search_type)을 'mmr'로 설정하면 어떻게 동작하나요?",
-    "expected_answer": "검색 유형을 'mmr'(Maximal Marginal Relevance)로 설정하면, 검색 결과의 유사도뿐만 아니라 다양성도 함께 고려하여 문서를 선택합니다. 이는 서로 비슷하지만 약간 다른 정보를 가진 문서를 함께 반환하는 데 도움이 됩니다.",
-    "source": "https://python.langchain.com/docs/modules/data_connection/retrievers/vectorstore"
-  },
-  {
-    "question": "RunnablePassthrough는 LCEL에서 어떤 역할을 하나요?",
-    "expected_answer": "RunnablePassthrough는 입력을 변경하지 않고 그대로 전달하거나, 새로운 키를 추가하여 딕셔너리를 확장하는 역할을 합니다. 체인 내에서 특정 데이터를 다음 단계로 그대로 전달해야 할 때 유용하게 사용됩니다.",
-    "source": "https://python.langchain.com/docs/expression_language/how_to/passthrough"
-  }
+{
+  "question": "PydanticOutputParser를 사용하는 전체 코드 예제를 보여주세요.",
+  "expected_answer": "from langchain_core.prompts import ChatPromptTemplate\nfrom langchain_core.output_parsers import StrOutputParser\nfrom langchain_openai import ChatOpenAI\n\nprompt = ChatPromptTemplate.from_template('tell me a joke about {topic}')\nmodel = ChatOpenAI()\noutput_parser = StrOutputParser()\n\nchain = prompt | model | output_parser\n\nchain.invoke({'topic': 'ice cream'})",
+  "source": "https://python.langchain.com/docs/modules/model_io/output_parsers/pydantic"
+}
+,
+{
+  "question": "ConversationBufferMemory를 RAG 체인에 추가하는 코드 예시를 알려주세요.",
+  "expected_answer": "from langchain.memory import ConversationBufferMemory\n\nmemory = ConversationBufferMemory(memory_key='chat_history', return_messages=True)\n\nchain = RunnableWithMessageHistory(\n    runnable=rag_chain, \n    get_session_history=lambda session_id: ... , \n    input_messages_key='question', \n    history_messages_key='chat_history'\n)",
+  "source": "https://python.langchain.com/docs/expression_language/how_to/message_history"
+}
+,
+{
+  "question": "WebBaseLoader를 사용하여 웹 페이지 내용을 로드하고, RecursiveCharacterTextSplitter로 분할하는 코드 예시를 보여주세요.",
+  "expected_answer": "from langchain_community.document_loaders import WebBaseLoader\nfrom langchain_text_splitters import RecursiveCharacterTextSplitter\n\nloader = WebBaseLoader('https://lilianweng.github.io/posts/2023-06-23-agent/')\ndocs = loader.load()\n\ntext_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=0)\nsplits = text_splitter.split_documents(docs)",
+  "source": "https://python.langchain.com/docs/how_to/recursive_splitter"
+}
+,
+{
+  "question": "RunnablePassthrough를 사용해서 retriever가 찾은 context를 LLM에 전달하는 코드 예시를 보여주세요.",
+  "expected_answer": "from langchain_core.runnables import RunnablePassthrough\n\nretriever = vector.as_retriever()\n\ndef format_docs(docs):\n    return '\\n\\n'.join(doc.page_content for doc in docs)\n\nchain = (\n    {'context': retriever | format_docs, 'question': RunnablePassthrough()}\n    | prompt\n    | model\n    | StrOutputParser()\n)",
+  "source": "https://python.langchain.com/docs/expression_language/how_to/retrieval_chain"
+}
+
 ]

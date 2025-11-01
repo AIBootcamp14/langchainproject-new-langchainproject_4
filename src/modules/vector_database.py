@@ -4,8 +4,8 @@ ChromaDB 서버와 연동하는 클라이언트 구현.
 """
 
 import os
-import time  # 시간 측정/딜레이 등에 대비해 임포트 유지 (PEP 8)
-from typing import Optional, Any, Dict, List  # PEP 484
+import time
+from typing import Optional, Any, Dict, List
 
 import chromadb
 from chromadb.config import Settings
@@ -15,6 +15,13 @@ from langchain_core.embeddings import Embeddings
 
 # 모듈 내부의 llm.py에서 get_embeddings 함수를 가져옴 (상대 경로 사용)
 from .llm import get_embeddings
+
+
+def _is_running_in_docker() -> bool:
+    """컨테이너 내부에서 실행 중인지 확인합니다 (로컬/Docker 자동 판별용)."""
+    # Docker 환경에서 흔히 발견되는 환경 변수를 확인하거나, 
+    # Docker가 생성하는 특정 파일을 확인합니다. (간단한 환경변수 체크 사용)
+    return os.path.exists("/.dockerenv") or "DOCKER_CONTAINER_ID" in os.environ
 
 
 class VectorDatabaseClient:
@@ -32,19 +39,30 @@ class VectorDatabaseClient:
         """
         VectorDatabaseClient 초기화.
         """
-        # 호스트 설정: 로컬 실행 시 Docker 컨테이너 이름(vector_db)을 localhost로 재지정
-        resolved_host = host or os.getenv("CHROMA_HOST", "localhost")
+        
+        # 💡 [핵심 수정]: 실행 환경에 따라 ChromaDB 호스트를 자동으로 결정합니다.
+        
+        # 1. 환경 변수에서 기본값(vector_db 또는 localhost)을 가져옴
+        env_host = os.getenv("CHROMA_HOST", "vector_db") 
+        resolved_host = host or env_host
 
-        if resolved_host == "vector_db":
+        # 2. 로컬에서 실행 중인데 host가 'vector_db'로 설정되어 있다면, 'localhost'로 변경합니다.
+        if not _is_running_in_docker() and resolved_host == "vector_db":
+            # 로컬 PC가 Docker 컨테이너(vector_db)에 접속하려면 localhost를 써야 함
             resolved_host = "localhost"
 
-        self.host = resolved_host
+        # 3. 만약 Docker 컨테이너 안에서 실행 중인데 host가 'localhost'라면, 'vector_db'로 재변경합니다.
+        #    (이 경우는 거의 없지만, 완전성을 위해 대비)
+        elif _is_running_in_docker() and resolved_host == "localhost":
+            # 컨테이너 안에서는 'localhost'는 자기 자신을 가리키므로, 옆 컨테이너 이름으로 변경
+            resolved_host = "vector_db"
+
+        self.host: str = resolved_host
         # 환경 변수에서 PORT를 가져올 때 int로 변환 (PEP 484)
-        self.port = port or int(os.getenv("CHROMA_PORT", "8000"))
-        self.collection_name = collection_name
+        self.port: int = port or int(os.getenv("CHROMA_PORT", "8000"))
+        self.collection_name: str = collection_name
 
         # 임베딩 모델 설정
-        # LLM 모듈 테스트에서 성공했으므로, 이 객체 생성은 문제 없음
         self.embeddings: Embeddings = self._get_embedding_model(embedding_model)
 
         # ChromaDB 클라이언트 초기화
@@ -79,17 +97,11 @@ class VectorDatabaseClient:
                 # 컬렉션이 없는 경우의 에러는 무시 (PEP 20)
                 print(f"컬렉션 삭제 실패 (이미 없을 수 있음): {e.__class__.__name__}")
 
-        # 💡 [핵심 수정]: ChromaDB에서 임베딩을 시도할 때 에러가 발생하므로,
-        # 💡 임베딩 함수를 **지연 로딩**하거나, **`langchain-upstage`와 ChromaDB 간의 호출 형식 문제**를 우회해야 함.
-        # 💡 임베딩 함수를 `UpstageEmbeddings` 대신, `Chroma`가 선호하는 래퍼 함수로 감싸서 전달하는 것이 안정적임.
-        # 💡 그러나 LangChain v0.1.x 버전대에서는 클래스를 바로 전달하는 것이 표준이므로, 코드는 유지하고 버전을 낮추는 전략을 택함.
-
         # Chroma 벡터스토어 생성
         self.vectorstore = Chroma(
             client=self.client,
             collection_name=self.collection_name,
-            # 💡 임베딩 함수를 직접 전달: LangChain 표준 (버전 충돌 우회는 외부 환경에서 처리)
-            embedding_function=self.embeddings 
+            embedding_function=self.embeddings
         )
 
         try:
@@ -123,13 +135,13 @@ def get_persisted_vectorstore(
     """
     초기 적재가 완료된 벡터 저장소 객체를 가져옴 (main.py에서 사용될 함수). (PEP 484)
     """
-    vdb_client = VectorDatabaseClient(
+    vdb_client: VectorDatabaseClient = VectorDatabaseClient(
         host=host,
         collection_name=collection_name
     )
 
     if not vdb_client.health_check():
-        # ConnectionError 대신 표준 HTTPException을 유발하는 에러를 던지도록 (main.py 참조)
+        # main.py에서 HTTP 500 에러를 던질 수 있도록 ConnectionError를 발생시킴
         raise ConnectionError("ChromaDB 서버에 연결할 수 없습니다. Docker Compose를 확인해주세요.")
 
     # reset=False로 호출하여 기존 데이터를 유지
@@ -141,6 +153,11 @@ if __name__ == "__main__":
     from dotenv import load_dotenv
     load_dotenv()
     
+    # 로컬에서 실행할 때는 CHROMA_HOST를 vector_db로 두는 게 편하므로 env 파일에 vector_db를 넣는 게 좋음
+    if os.getenv("CHROMA_HOST") is None:
+        print("경고: CHROMA_HOST 환경 변수가 설정되지 않아 'vector_db'를 기본값으로 사용합니다.")
+        os.environ["CHROMA_HOST"] = "vector_db"
+
     print("=" * 60)
     print("VectorDatabase 모듈 테스트")
     print("=" * 60)

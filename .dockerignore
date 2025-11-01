@@ -1,0 +1,29 @@
+# 환경 설정 및 로컬 데이터
+.env
+.DS_Store
+.vscode/
+
+# Python 관련
+pycache
+*.pyc
+
+# 가상 환경
+.venv
+venv/
+
+# Git 관련
+.git
+.gitignore
+
+# 벡터 DB 데이터 (용량이 크고, 빌드 시점에 필요 없음)
+vectorstore/
+chroma_db/
+
+
+
+
+
+
+
+
+

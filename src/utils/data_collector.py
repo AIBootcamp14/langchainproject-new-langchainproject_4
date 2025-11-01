@@ -1,5 +1,3 @@
-# src/data_collector.py
-
 """
 데이터 수집 모듈
 LangChain 문서를 수집하여 Document 객체 리스트로 반환하는 기능
@@ -32,21 +30,71 @@ class DataCollector:
 
     def get_sample_urls(self) -> List[str]:
         """
-        수집할 샘플 URL 리스트 반환 (initialize_vector_db.py의 목록과 일치시켜야 함)
+        수집할 샘플 URL 리스트 반환 (테스트용)
         """
+        # 기존 10개의 샘플 URL 유지 (테스트용)
         urls: List[str] = [
-            "https://python.langchain.com/docs/introduction",
-            "https://python.langchain.com/docs/get_started/quickstart",
-            "https://python.langchain.com/docs/concepts",
-            "https://python.langchain.com/docs/modules/model_io/llms",
-            "https://python.langchain.com/docs/modules/retrieval/vectorstores",
-            "https://python.langchain.com/docs/modules/chains",
-            "https://python.langchain.com/docs/modules/agents",
-            "https://python.langchain.com/docs/modules/memory",
-            "https://python.langchain.com/docs/expression_language",
-            "https://python.langchain.com/docs/modules/callbacks",
+            f"{self.base_url}docs/introduction",
+            f"{self.base_url}docs/get_started/quickstart",
+            f"{self.base_url}docs/concepts",
+            f"{self.base_url}docs/modules/model_io/llms",
+            f"{self.base_url}docs/modules/retrieval/vectorstores",
+            f"{self.base_url}docs/modules/chains",
+            f"{self.base_url}docs/modules/agents",
+            f"{self.base_url}docs/modules/memory",
+            f"{self.base_url}docs/expression_language",
+            f"{self.base_url}docs/modules/callbacks",
         ]
         return urls
+
+    def get_all_urls(self) -> List[str]:
+        """
+        수집할 모든 주요 LangChain 문서 URL 리스트 반환 (최종 적재용)
+
+        NOTE: LangChain 문서 구조를 기반으로 주요 섹션 URL을 수동으로 정의함.
+              전체 문서를 동적으로 찾으려면 별도 로직 (예: Recursive URL Loader)이 필요하나,
+              여기서는 프로젝트 완료를 위해 주요 문서 목록을 확장함.
+        """
+        
+        # 💡 [핵심 추가]: 전체 문서 적재를 위해 URL 목록을 대폭 확장
+        all_urls: List[str] = [
+            # 1. Getting Started
+            f"{self.base_url}docs/introduction",
+            f"{self.base_url}docs/get_started/quickstart",
+            f"{self.base_url}docs/concepts",
+            
+            # 2. Key Modules
+            f"{self.base_url}docs/modules/model_io/llms",
+            f"{self.base_url}docs/modules/model_io/prompts",
+            f"{self.base_url}docs/modules/model_io/chat",
+            f"{self.base_url}docs/modules/retrieval/vectorstores",
+            f"{self.base_url}docs/modules/retrieval/retriever",
+            f"{self.base_url}docs/modules/chains",
+            f"{self.base_url}docs/modules/agents",
+            f"{self.base_url}docs/modules/agents/tools",
+            f"{self.base_url}docs/modules/memory",
+            
+            # 3. Advanced Features (LCEL & Integrations)
+            f"{self.base_url}docs/expression_language",
+            f"{self.base_url}docs/integrations/llms/openai",
+            f"{self.base_url}docs/integrations/llms/anthropic",
+            f"{self.base_url}docs/integrations/vectorstores/chroma",
+            f"{self.base_url}docs/integrations/vectorstores/faiss",
+            f"{self.base_url}docs/modules/callbacks",
+            
+            # 4. Use Cases
+            f"{self.base_url}docs/use_cases/question_answering",
+            f"{self.base_url}docs/use_cases/summarization",
+            f"{self.base_url}docs/use_cases/chatbots",
+            
+            # 5. Deployment/Ecosystem
+            f"{self.base_url}docs/guides/deployment",
+            f"{self.base_url}docs/guides/testing",
+            f"{self.base_url}docs/guides/contributing",
+
+            # 6. 추가적으로 팀이 다루기로 한 핵심 페이지가 있다면 여기에 추가
+        ]
+        return all_urls
 
     def extract_category(self, url: str) -> str:
         """URL에서 문서 카테고리 추출"""
@@ -56,6 +104,7 @@ class DataCollector:
             return "getting_started"
         elif "concepts" in url:
             return "concepts"
+        # ... (이하 코드는 생략, 카테고리 로직은 그대로 유지)
         elif "modules/model_io" in url:
             return "model_io"
         elif "modules/retrieval" in url:
@@ -72,14 +121,9 @@ class DataCollector:
             return "general"
 
     def crawl_page(self, url: str) -> Optional[Document]:
+        # ... (이하 코드는 변화 없음)
         """
         개별 페이지를 크롤링하여 LangChain Document 객체로 반환
-
-        Args:
-            url: 크롤링할 URL.
-
-        Returns:
-            LangChain Document 객체 또는 크롤링 실패 시 None.
         """
         try:
             # WebBaseLoader를 사용해 페이지 로드
@@ -123,19 +167,15 @@ class DataCollector:
     ) -> List[Document]:
         """
         문서 수집 메인 함수
-
-        Args:
-            urls: 수집할 URL 리스트 (None이면 샘플 URL 사용).
-            max_pages: 최대 수집 페이지 수.
-            delay: 요청 간 대기 시간 (초).
-
-        Returns:
-            수집된 Document 리스트.
         """
         if urls is None:
-            urls = self.get_sample_urls()
+            # 💡 [핵심 수정]: URLs이 주어지지 않으면 전체 목록을 가져오도록 변경
+            urls = self.get_all_urls() 
+            
+        # max_pages가 None일 경우 전체를 사용 (None인 경우 슬라이싱이 안 되므로 max_pages를 10000같은 큰 숫자로 대체)
+        if max_pages is not None:
+             urls = urls[:max_pages]
 
-        urls = urls[:max_pages]
         documents: List[Document] = []
         
         print(f"총 {len(urls)}개 페이지 수집 시작...")
@@ -155,7 +195,7 @@ class DataCollector:
 
 
 if __name__ == "__main__":
-    # 모듈 테스트
+    # ... (테스트 코드는 그대로 유지)
     print("=" * 50)
     print("Data Collector 모듈 테스트")
     print("=" * 50)
@@ -163,21 +203,22 @@ if __name__ == "__main__":
     collector: DataCollector = DataCollector()
 
     # 1. 샘플 URL 확인
-    print("\n1. 샘플 URL 확인:")
+    print("\n1. 샘플 URL 확인 (10개):")
     sample_urls: List[str] = collector.get_sample_urls()
-    print(f"  수집 대상 URL 개수: {len(sample_urls)}")
-    print(f"  첫 번째 URL: {sample_urls[0]}")
+    print(f"  수집 대상 URL 개수: {len(sample_urls)}")
 
-    # 2. 실제 테스트 수집
-    print("\n2. 테스트 수집 (2개 페이지, 지연 0.5초):")
+    # 2. 전체 URL 확인
+    print("\n2. 전체 URL 확인:")
+    all_urls: List[str] = collector.get_all_urls()
+    print(f"  전체 URL 개수: {len(all_urls)}개")
+
+    # 3. 실제 테스트 수집
+    print("\n3. 테스트 수집 (2개 페이지, 지연 0.5초):")
     test_docs: List[Document] = collector.collect_documents(max_pages=2, delay=0.5)
 
     if test_docs:
-        print(f"  수집된 문서: {len(test_docs)}개")
-        print(f"  첫 번째 문서 제목: {test_docs[0].metadata.get('title')}")
-        print(f"  첫 번째 문서 카테고리: {test_docs[0].metadata.get('category')}")
-        print(f"  첫 번째 문서 내용 일부: {test_docs[0].page_content[:100]}...")
+        print(f"  수집된 문서: {len(test_docs)}개")
     else:
-        print("  수집된 문서 없음.")
+        print("  수집된 문서 없음.")
 
     print("\n테스트 완료!")

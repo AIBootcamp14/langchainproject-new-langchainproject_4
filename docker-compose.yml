@@ -48,8 +48,8 @@ services:
     networks:
       - rag-network
     restart: unless-stopped
-    # FastAPI 서버 실행 명령어 (자동 리로드)
-    command: uvicorn src.main:app --host 0.0.0.0 --port 8080 --reload
+    # 🚨 수정된 부분: FastAPI와 Streamlit을 동시에 백그라운드에서 실행
+    command: sh -c "uvicorn src.main:app --host 0.0.0.0 --port 8080 --reload & streamlit run src/streamlit_app.py --server.port 8501 --server.enableCORS false"
 
 # --- 3. Network Definition (서비스 간 통신) ---
 networks:

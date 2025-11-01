@@ -45,7 +45,7 @@ load_dotenv()
 # --- 설정 값 ---
 # 환경 변수가 없으면 기본값 사용
 COLLECTION_NAME: str = os.getenv("CHROMA_COLLECTION", "langchain_docs")
-MAX_PAGES_TO_CRAWL: int = 10 # 전체 문서를 적재하기 전에 테스트용으로 10개로 제한
+MAX_PAGES_TO_CRAWL: int = None # 10에서 품질 높이기 위해 None로 수정
 CRAWL_DELAY_SECONDS: float = 1.0
 RESET_DB: bool = True # DB를 새로 만들지 여부 (테스트 시 True 권장)
 
@@ -62,8 +62,8 @@ def run_data_ingestion() -> None:
     print("\n[단계 1/4] LangChain 문서 수집 시작...")
     collector = DataCollector()
     
-    # DataCollector 내부의 get_sample_urls 사용
-    urls_to_crawl = collector.get_sample_urls() 
+    # DataCollector 내부의 get_all_urls 사용
+    urls_to_crawl = collector.get_all_urls() 
     
     raw_documents: List[Document] = collector.collect_documents(
         urls=urls_to_crawl,

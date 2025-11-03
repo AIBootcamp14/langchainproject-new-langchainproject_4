@@ -1,4 +1,4 @@
-# Docker Compose Version: 최신 포맷 (version 라인 제거)
+# Docker Compose Version: 구형 환경 호환을 위해 version 라인 제거
 
 services:
   # --- 1. Vector Database: ChromaDB ---
@@ -17,15 +17,18 @@ services:
     networks:
       - rag-network
     restart: unless-stopped
-    # Healthcheck를 제거하여 컨테이너 시작 실패 문제를 해결
-    # healthcheck 블록 없음.
+    # Healthcheck 블록 없음.
 
   # --- 2. LangChain RAG Application (FastAPI & Streamlit) ---
   rag-app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    # 🚨 구형 문법으로 변경: build: 다음에 컨텍스트 경로만 한 줄로 지정
+    build: . 
+    
     container_name: rag-application
+    
+    # 💡 환경 변수 주입 추가
+    env_file: .env 
+    
     # 외부 포트: 8501 (Streamlit), 8080 (FastAPI)
     ports:
       - "8501:8501"
@@ -39,16 +42,17 @@ services:
       - CHROMA_HOST=vector_db
       - CHROMA_PORT=8000
       - PYTHONUNBUFFERED=1
-      # 최종 통일된 Solar API 키 사용
-      - UPSTAGE_API_KEY=${UPSTAGE_API_KEY} 
+      # 🚨 UPSTAGE_API_KEY 설정 줄은 env_file로 대체되므로 삭제하거나 주석 처리해야 함!
+      # - UPSTAGE_API_KEY=${UPSTAGE_API_KEY} 
+      
     depends_on:
       chromadb:
-        # DB 서버가 시작(service_started)되기만 하면 API 서버도 시작하도록 변경 (안정성 확보)
         condition: service_started
     networks:
       - rag-network
     restart: unless-stopped
-    # 🚨 수정된 부분: FastAPI와 Streamlit을 동시에 백그라운드에서 실행
+    
+    # FastAPI와 Streamlit을 동시에 백그라운드에서 실행
     command: sh -c "uvicorn src.main:app --host 0.0.0.0 --port 8080 --reload & streamlit run src/streamlit_app.py --server.port 8501 --server.enableCORS false"
 
 # --- 3. Network Definition (서비스 간 통신) ---

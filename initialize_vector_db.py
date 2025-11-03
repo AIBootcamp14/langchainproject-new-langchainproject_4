@@ -44,7 +44,7 @@ load_dotenv()
 
 # --- 설정 값 ---
 # 환경 변수가 없으면 기본값 사용
-COLLECTION_NAME: str = os.getenv("CHROMA_COLLECTION", "langchain_docs")
+COLLECTION_NAME: str = os.getenv("CHROMA_COLLECTION_NAME", "langchain_docs")
 MAX_PAGES_TO_CRAWL: int = None # 10에서 품질 높이기 위해 None로 수정
 CRAWL_DELAY_SECONDS: float = 1.0
 RESET_DB: bool = True # DB를 새로 만들지 여부 (테스트 시 True 권장)

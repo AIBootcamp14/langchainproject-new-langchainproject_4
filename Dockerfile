@@ -1,54 +1,60 @@
-# Dockerfile
-
 # --- 1단계: 빌드 환경 설정 (Build Stage) ---
-# 안정적인 Python 3.11.9 버전을 사용하고 빌드에 필요한 도구를 설치합니다.
 FROM python:3.11.9-slim-bookworm as builder
 
 # 작업 디렉토리 설정
 WORKDIR /app
 
-# 시스템 패키지 업데이트 및 필수 도구 설치 (git은 종속성 필요, curl은 헬스체크/다운로드 용)
-# 설치 후 캐시를 삭제하여 이미지 크기를 줄입니다.
+# 시스템 패키지 업데이트 및 필수 도구 설치 (git, curl, build-essential)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
+    build-essential \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # requirements.txt 복사 및 의존성 설치
 COPY requirements.txt .
-# pip 캐시 사용 안함 (--no-cache-dir) 으로 이미지 크기 최소화
+
+# --- FIX 1: pytest와 coverage 설치 추가 ---
+# 테스트 실행을 위해 명시적으로 pytest와 coverage를 설치합니다.
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install pytest coverage
 
 # --- 2단계: 최종 실행 환경 구성 (Final Stage) ---
-# 최종 실행 환경은 빌드 도구가 없는 깨끗한 이미지로 시작하여 이미지 크기를 최소화합니다.
 FROM python:3.11.9-slim-bookworm
 
 # 작업 디렉토리 설정
 WORKDIR /app
 
-# 파이썬 경로 설정: /app/src 디렉토리를 모듈 경로에 포함시켜 절대 경로로 임포트 가능하게 함
 ENV PYTHONPATH /app
-# 출력 버퍼링 비활성화 (로그 실시간 확인에 유용)
 ENV PYTHONUNBUFFERED 1
 
 # 빌드 단계에서 설치된 라이브러리 및 실행 파일 복사
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# 소스 코드 복사 (requirements.txt는 이미 설치됨)
+# --- FIX 2: start_api.py 파일 복사 추가 ---
+# 최상위 디렉토리에 있는 start_api.py 파일을 /app 디렉토리로 복사합니다.
+COPY start_api.py . 
+
+# 소스 코드 복사
 COPY src/ src/
 
+# --- FIX 3: data/tests 폴더 경로에 맞게 복사 ---
+# tests/ 폴더가 data/tests/에 있으므로, 이 경로의 파일을 컨테이너의 tests/로 복사합니다.
+COPY data/tests/ tests/ 
+
 # 데이터 디렉토리 생성 (RAG 시스템/DB/로그 저장을 위해 필수)
+# data/tests/에 있던 test_questions.json 파일이 tests/로 복사되었으니,
+# 실제 데이터 파일이 들어갈 data/raw 폴더는 그대로 둡니다.
 RUN mkdir -p /app/data/chroma_db /app/data/raw /app/data/processed /app/logs
 
-# FastAPI의 기본 포트 8080 노출 (docker-compose와 포트 통일)
+# FastAPI와 Streamlit 포트 노출
 EXPOSE 8080
-# Streamlit 포트 노출 (프론트엔드용)
 EXPOSE 8501
 
-# 헬스체크 설정 (FastAPI 포트 8080 사용)
+# 헬스체크 설정
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:8080/ || exit 1
 

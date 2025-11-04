@@ -4,6 +4,7 @@
 벡터 데이터베이스(ChromaDB) 연결 및 관리 클래스
 """
 
+from typing import Any
 import os
 from typing import List, Final
 

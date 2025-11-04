@@ -27,8 +27,37 @@
 
 ## 1. 아키텍처 및 기술적 결정 (Technical Deep Dive)
 
-### 1.1. 시스템 아키텍처 다이어그램
 
+### 1.1. 시스템 아키텍처 다이어그램
+```mermaid
+flowchart TD
+subgraph Indexing
+direction LR
+DOC --> A(Crawl Load)
+A --> B(Chunk Embed)
+B --> VDB
+end
+
+subgraph Query
+direction TD
+QUERY --> S1(Streamlit UI)
+S1 --> S2(FastAPI Server)
+
+subgraph Pipeline
+S2 --> L3(RAG Chain)
+L3 --> VDB
+VDB --> L4(Retrieve Docs)
+L4 --> L5(Prompt Build)
+L5 --> LLM
+LLM --> L6(Generate)
+L6 --> L3
+end
+
+S2 <-- S7(SSE Response)
+S7 --> QUERY
+end
+```
+---
 
 
 ### 1.2. 핵심 기술적 결정 및 문제 해결

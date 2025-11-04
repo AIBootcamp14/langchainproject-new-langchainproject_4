@@ -29,34 +29,53 @@
 
 
 ### 1.1. 시스템 아키텍처 다이어그램
+
 ```mermaid
 flowchart TD
-subgraph Indexing
-direction LR
-DOC --> A(Crawl Load)
-A --> B(Chunk Embed)
-B --> VDB
-end
+    %% -------------------------------------
+    %% A. 데이터 준비 및 인덱싱 흐름 (Offline)
+    %% -------------------------------------
+    subgraph Indexing Flow
+        direction LR
+        DOC([LangChain 문서]) -->|A. 크롤링/로드| INIT(DB 초기화 스크립트)
+        INIT -->|B. 커스텀 청킹/임베딩| EMB(Solar Embedding)
+        EMB -->|C. 벡터 저장| VDB((ChromaDB: 벡터 스토어))
+    end
 
-subgraph Query
-direction TD
-QUERY --> S1(Streamlit UI)
-S1 --> S2(FastAPI Server)
+    %% -------------------------------------
+    %% B. 사용자 질의 (Query) 및 응답 흐름 (Run-Time)
+    %% -------------------------------------
+    subgraph Query Flow
+        direction TD
+        SUB[[사용자 Query]] -->|1. HTTP 요청| STR(Streamlit UI: [http://8501](http://8501))
+        STR -->|2. /ask/stream 호출| API{FastAPI Server: [http://8000](http://8000)}
 
-subgraph Pipeline
-S2 --> L3(RAG Chain)
-L3 --> VDB
-VDB --> L4(Retrieve Docs)
-L4 --> L5(Prompt Build)
-L5 --> LLM
-LLM --> L6(Generate)
-L6 --> L3
-end
+        subgraph LCEL Pipeline
+            API -->|3. RAG 체인 실행| LCEL[LangChain LCEL Chain]
+            LCEL -->|4-1. 쿼리 임베딩| VDB
+            VDB -->|4-2. 유사 문서 검색| LCEL
+            LCEL -->|5. Prompt 구성| LLM((Solar-1-Mini: LLM))
+            LLM -->|6. 답변 생성 (Token)| LCEL
+        end
 
-S2 <-- S7(SSE Response)
-S7 --> QUERY
-end
+        API -.->|7. Streaming Response (SSE)| STR
+        STR -->|8. 실시간 출력| SUB
+    end
+
+    %% -------------------------------------
+    %% C. 스타일링 (Docker 컨테이너 강조)
+    %% -------------------------------------
+    style STR fill:#e0f7fa,stroke:#00bcd4,stroke-width:2,stroke-dasharray: 5,5
+    style API fill:#e0f7fa,stroke:#00bcd4,stroke-width:2,stroke-dasharray: 5,5
+    style VDB fill:#e0f7fa,stroke:#00bcd4,stroke-width:2,stroke-dasharray: 5,5
 ```
+
+
+
+
+
+
+
 ---
 
 

@@ -1,462 +1,310 @@
-코딩 표준 (PEP 8, 20, 484)	모든 스타일 코드는 PEP 8(스타일) , PEP 20(철학) , PEP 484(스타일) 준수
-자동 포맷팅 도구(예: Black, isort)를 프로젝트에 삽입해서 코딩 스타일을 미리 방지
+#  LangChain 기술 문서 RAG 챗봇
 
-|팀장|팀원|팀원|팀원|
-| :---: | :---: | :---: | :---: |
-|김영|이준영|김광묵|김시진,김동준|
-|구성 및 MLOps|RAG 로직 개발|행동 및 평가|데이터 엔지니어링, Vector DB 구축 및 관리|
+ **프로젝트 목표:** LangChain 기술 문서를 기반으로 정확하고 신뢰성 높은 답변을 제공하는 **검색 증강 생성(RAG)** 챗봇 시스템입니다. 
 
-<br>
+**LCEL(LangChain Expression Language)**을 활용한 모듈화된 파이프라인 구축 및 Docker Compose 기반의 완벽한 컨테이너 배포 환경을 구현했습니다.
 
-|역할|세부사항|
-| --- | --- |
-| 애플리케이션 & MLOps | API 설계, Docker, 클라우드 배포 |
-| RAG 로직 개발 | LangChain/LlamaIndex 체인 설계, 검색 최적화 |
-| 프롬프트 및 평가 | 환각 방지, 성능 지표(Relevance, Faithfulness) 측정 |
-| 데이터 엔지니어링 | 문서 수집, 기술 문서 Chunking 전략 수립 |
-| 벡터 DB 및 환경 | Vector DB 구축 및 관리 |
+---
+
+## 0. Overview (프로젝트 개요)
+
+| 항목 | 상세 내용 |
+| :--- | :--- |
+| **주요 목표** | Upstage Solar LLM을 백본으로 하는 **엔드-투-엔드(End-to-End) RAG 서비스** 구축 |
+| **핵심 성과** | 1. **LCEL 기반 RAG 파이프라인** 설계 및 비동기 스트리밍 구현 <br> 2. **AWS EC2 & Docker Compose**를 활용한 비용 효율적인 다중 서비스 배포 환경 구축 <br> 3. **고품질 테스트 코드**(`pytest`)로 핵심 RAG 동작 및 LLM 연결 검증 |
+| **아키텍처** | **Streamlit** (UI) ↔ **FastAPI** (API) ↔ **RAGRetriever** (LCEL) ↔ **ChromaDB** (VDB) |
+| **LLM / 임베딩** | **Solar-1-Mini** (LLM), **Solar Embedding-1-Large** (Embedding) |
+| **데이터셋** | LangChain 공식 기술 문서 (Web Crawler를 통해 수집) |
+
+### 환경 및 요구 사항
+
+| 항목 | 상세 내용 |
+| :--- | :--- |
+| **OS** | Ubuntu (Docker 환경) |
+| **Python** | 3.11+ |
+| **프레임워크** | FastAPI, Streamlit, LangChain, Pytest |
+| **DB / Infra** | ChromaDB (Docker Compose), Docker |
+
+---
 
 
-| **API 사용** | **Solar API** 사용 확정 | `https://www.upstage.ai/pricing` (P.7) 링크 참고하여 API 키 발급 및 관리 |
-| **UI 개발** | **Gradio / Streamlit** 중 택 1 | `demo.py`를 통해 UI 구현 및 `main.py`와 통합 (P.6, P.7) |
 
 
 
+## 1. 아키텍처 및 기술적 결정 (Technical Deep Dive)
 
 
-# 기술 문서 기반 RAG 챗봇 구축 프로젝트
+### 1.1. 시스템 아키텍처 다이어그램
 
-### 📁 프로젝트 디렉토리 구조
+```mermaid
+sequenceDiagram
+    participant 사용자
+    participant Streamlit
+    participant FastAPI
+    participant LCEL Box
+    participant ChromaDB
+    participant LLM as Solar-1-Mini
 
-프로젝트의 모듈별 역할은 아래와 같습니다.
+    %% 1. 사용자 -> Streamlit
+    autonumber
+    사용자 ->> Streamlit: Query (질문)
 
+    %% 2. Streamlit -> FastAPI
+    Streamlit ->> FastAPI: HTTP 요청
+    activate FastAPI
+
+    %% 3. FastAPI -> LCEL Box (RAG 체인 실행)
+    FastAPI ->> LCEL Box: RAG 체인 실행
+
+    %% 4. LCEL Box -> ChromaDB (벡터 검색)
+    LCEL Box ->> ChromaDB: 4-1. 벡터 검색 (Retrieval)
+    activate ChromaDB
+
+    %% 5. ChromaDB -> LCEL Box (Context 반환)
+    ChromaDB -->> LCEL Box: 4-2. Context 반환
+    deactivate ChromaDB
+
+    %% 6. LCEL Box -> LLM (Prompt + Context)
+    LCEL Box ->> LLM: 5. Prompt + Context
+
+    %% 7. LLM -> FastAPI (Token 스트리밍)
+    LLM -->> FastAPI: 6. Token 스트리밍
+
+    %% 8. FastAPI -> Streamlit (SSE 스트리밍 응답)
+    FastAPI -->> Streamlit: 7. SSE 스트리밍 응답
+    deactivate FastAPI
+
+    %% 9. Streamlit -> 사용자 (최종 답변 출력)
+    Streamlit ->> 사용자: 8. 최종 답변 출력
 ```
+이 프로젝트는 Streamlit, FastAPI, ChromaDB 기반의 모듈화된 RAG 챗봇 시스템입니다. 특히, 사용자의 응답 체감 속도를 극대화하기 위해 SSE(Server-Sent Events) 기반 스트리밍 아키텍처를 채택했습니다.
+
+
+### 핵심 상호작용 (Sequence Diagram 요약)
+
+1. 시작: 사용자의 질문은 **Streamlit (UI)**을 거쳐 **FastAPI (API)**로 전달됩니다.
+
+2. RAG 실행: FastAPI 내부에서 LangChain LCEL 파이프라인이 실행되어 ChromaDB로부터 관련 문서를 검색합니다.
+
+3. 생성 및 스트리밍: 검색된 Context를 포함한 Prompt가 Solar-1-Mini LLM에 전달되며, LLM이 생성하는 답변 토큰은 FastAPI를 통해 SSE(Server-Sent Events) 방식으로 Streamlit에 실시간으로 전송됩니다.
+
+4. 최종 출력: Streamlit은 토큰을 즉시 사용자에게 출력하여 지연 시간을 최소화합니다.
+
+
+
+
+### 1.2. LCEL RAG 체인 흐름 다이어그램
+
+`src/modules/retriever.py` 내부에 정의된 LangChain LCEL 파이프라인의 내부 프로세스를 시각화했습니다.
+
+```mermaid
+graph TD
+    A(["1. Query (User Input)"])
+    B["2. Retriever (ChromaDB)"]
+    C{"3. Documents (검색된 문서)"}
+    D["4. Prompt Template"]
+    E(("5. LLM - Solar-1-Mini"))
+    F["6. Output Parser"]
+    G(["7. Final Answer"])
+
+    A --> B
+    B -->|"문서 검색"| C
+    C -->|"Context 제공"| D
+    D -->|"최종 Prompt 합치기"| E
+    E -->|"답변 생성"| F
+    F -->|"출처 분리"| G
+```
+
+
+### 1.3. AWS EC2 기반 배포 아키텍처 (Deployment)
+
+본 프로젝트는 비용 효율성 및 빠른 배포를 위해 AWS EC2 인스턴스에 Docker Compose 환경을 구축하여 운영했습니다.
+
+```mermaid
+graph TD
+    EC2[EC2 Instance: Docker Host];
+    SG{Security Group};
+    SUB[사용자];
+    API[FastAPI Container];
+    STR[Streamlit Container];
+    DB[ChromaDB Container];
+    VDB_DATA(EBS Volume);
+
+    %% -------------------------------------
+    %% 흐름 정의 (라벨 텍스트 제거)
+    %% -------------------------------------
+    SUB --> EC2;
+    SUB --> SG;
+    SG --> EC2;
+
+    %% EC2와 Docker 간 포트 노출 (Host 역할)
+    EC2 --> STR;
+    EC2 --> API;
+
+    %% Docker 내부 통신
+    STR --> API;
+    API --> DB;
+
+    %% 영속적인 데이터
+    EC2 --> VDB_DATA;
+```
+
+
+
+---
+
+
+### 1.4. 핵심 기술적 결정 및 문제 해결
+
+| 영역 | 결정 사항 | 기술적 이점 (왜 이 방법을 선택했는가?) |
+| :--- | :--- | :--- |
+| **RAG 파이프라인** | **LCEL (LangChain Expression Language) 채택** | 파이프라인의 **모듈성**과 **재사용성**을 극대화. 비동기(`astream`) 및 병렬 처리를 쉽게 구현하여 LLM 애플리케이션의 **처리량(Throughput)**을 높임 |
+| **UX/성능** | **FastAPI 스트리밍 구현** | `StreamingResponse`와 `astream`을 통해 답변을 실시간으로 전송. 사용자에게 응답 대기 시간을 느끼지 않게 하여 **사용자 경험(UX)**을 대폭 향상했습니다. |
+| **문서 분할** | **Custom Chunking (코드 블록 보존)** | 기술 문서의 특성을 고려하여, 마크다운 코드 블록 내부의 텍스트가 분할되지 않도록 **커스텀 텍스트 분할기**를 구현하여 **검색 정확도**를 개선했습니다. |
+| **배포/견고성** | **Docker Compose + Health Check** | 백엔드와 DB를 독립적인 서비스로 분리하고, `healthcheck`를 도입하여 **서비스 간 의존성**을 명확히 하고 안정적인 시작 순서를 강제했습니다. |
+| **비용 효율** | **AWS EC2 & Non-Persistent Volume** | AWS 프리 티어 내에서 운영하기 위해 EC2 호스트 기반 배포를 선택. EFS/EBS 같은 유료 영구 스토리지를 피하고, 벡터 DB 데이터는 Docker 이미지 빌드 시점에 포함되도록 구성했습니다. |
+
+---
+
+## 2. 프로젝트 구조 (Project Structure)
+
+### 2.1. 프로젝트 디렉토리 구조
+
+프로젝트는 모듈화, 가독성, 그리고 **PEP 표준** 준수를 위해 명확한 계층 구조로 설계되었습니다.
+
+```bash
+.
 ├── .github/
+│   ├── ISSUE_TEMPLATE         # 이슈 템플릿
+│   ├── experiment-report.md
+│   ├── meeting-notes.md
+│   ├── todo-list.md
+│   └── trouble-shooting.md
+│   └── workflows/
+│       └── ci.yml             # 지속적 통합(CI) 파이프라인
 ├── data/
-│   ├── raw/
-│   └── tests/
-├── src/
+│   └── raw/
+├── tests/                     # 통합 및 단위 테스트 코드
+│   ├── test_llm.py            # LLM 관련 테스트
+│   ├── test_questions.json    # 테스트 질문 데이터
+│   └── test_retriever.py      # Retriever/RAG 핵심 테스트
+├── docs/                      # 프로젝트 문서
+│   └── FILE_LIST.md
+├── src/                       # 핵심 애플리케이션 소스 코드
 │   ├── modules/
-│   │   ├── llm.py                 # Solar API 호출 및 설정 (팀원 2)
-│   │   ├── prompts.py             # 환각 방지 시스템 프롬프트 (팀원 3)
-│   │   ├── retriever.py           # RAG 체인 및 검색 로직 (팀원 2)
-│   │   └── vector_database.py     # 벡터 DB 초기화 및 데이터 적재 (팀원 5)
+│   │   ├── evaluation.py      # RAG 평가 로직
+│   │   ├── llm.py             # Solar-1-Mini 모델 연동
+│   │   ├── prompts.py         # 커스텀 프롬프트 템플릿
+│   │   ├── retriever.py       # LangChain LCEL RAG 파이프라인 정의 (RAG의 핵심)
+│   │   └── vector_database.py # ChromaDB 연결 및 관리
 │   ├── utils/
-│   │   └── chunking_strategy.py   # 문서 구조 기반 청킹 전략 (팀원 4)
-│   ├── demo.py                    # Gradio/Streamlit UI 구현 (팀장)
-│   └── main.py                    # FastAPI 서버 진입점 및 모듈 통합 (팀장)
-├── vectorstore/                   # ChromaDB 등 로컬 Vector DB 저장소 (팀원 5)
-├── .env.example                   # 환경 변수 설정 예시 (API 키)
-├── .gitignore                     
-├── environment.yml                # Conda 환경 설정 파일 (Conda 사용자용)
-├── requirements.txt               # Pip 의존성 라이브러리 목록 (Pip 사용자용)
-├── docker-compose.yml             # Docker 통합 실행 설정 파일 (팀장)
-├── Dockerfile                     # Docker 이미지 빌드 파일 (팀장)
-└── README.md
+│   │   ├── chunking_strategy.py
+│   │   └── data_collector.py
+│   ├── demo.py
+│   ├── main.py                # FastAPI 애플리케이션 진입점
+│   └── streamlit_app.py       # Streamlit UI 실행 및 API 연동
+├── vectorstore/               # ChromaDB 벡터 데이터 저장소
+├── .env.example
+├── .gitignore
+├── docker-compose.yml         # FastAPI, Streamlit, ChromaDB 통합 배포 설정
+├── Dockerfile                 # FastAPI 이미지 빌드 파일
+├── initialize_vector_db.py    # 초기 문서 인덱싱 실행 스크립트
+├── requirements.txt           # Python 종속성 목록
+├── README.md
+└── start_api.py               # API 서버 시작 스크립트
 ```
 
- 
-
-### 1. 프로젝트 목표와 배경
-
-- **문제 정의 (배경):** 복잡하고 방대한 LLM 통합 프레임워크(LangChain)의 공식 문서를 개발자들이 일일이 수동 검색하는 데 드는 시간과 노력을 줄이기
-- **해결책:** 자연어 질문("특정 함수가 뭐예요?", "이 에러는 어떻게 해결해요?")을 하면, 우리가 만든 챗봇이 문서 속에서 **가장 정확한 코드 예시와 설명을 찾아서 즉시** 답변
-- **프로젝트 의미:** 단순히 챗봇이 아니라, LLM 기술을 LLM 기술 개발에 활용하는 **메타 레벨의 도구 생성**
-- 목표: **LangChain 공식 문서**를 데이터로 사용해 **End-to-End API 배포**까지 완료
-- 환경설정: 솔라 api 키 안전하게 공유할 수 있게 환경 변수 설정
-
-### 2. 핵심 기술 및 작동 원리 (RAG 챗봇)
-
-### 작동 순서
-
-1. **데이터 준비:** LangChain 공식 문서를 수집, **코드 블록**과 **함수 명세**가 보존되도록 특별한 전략으로 쪼개(Chunking) 벡터(숫자)로 변환
-2. **지식 저장:** 변환된 벡터들을 벡터 DB에 저장. 이것이 챗봇의 **독립적인 지식 베이스**
-3. **질문 검색:** 사용자가 질문, 챗봇은 이 질문과 **가장 유사한 벡터**를 DB에서 검색해 **관련 문서 조각**을 가져옴
-4. **답변 생성:** 검색된 문서 조각(참고 자료)과 원래 질문을 **Solar API** 같은 **LLM**에 전달. LLM은 이 참고 자료를 바탕으로 **참조 출처가 명확한 최종 답변**을 생성
-
-1. 전원 공통: 프로젝트 핵심 목표 및 환경 설정
-
-| **구분** | **확정 사항** | **OT 자료 근거 및 요구 사항** |
-| --- | --- | --- |
-| **최종 목표** | **RAG 챗봇 개발 및 End-to-End API 배포 완료** | 발표회(`11월 06일`) 전 `main.py`를 통해 모든 모듈이 실행되고 답변을 얻는 기능 필수 |
-| **API 사용** | **Solar API** 사용 확정 | `https://www.upstage.ai/pricing` (P.7) 링크 참고하여 API 키 발급 및 관리 |
-| **협업 원칙** | **GitHub Branch 전략 필수** | 모든 팀원은 **최소 1번 이상 PR 수행**해야 함. 모듈별 Branch 사용 (P.7) |
-| **UI 개발** | **Gradio / Streamlit** 중 택 1 | `demo.py`를 통해 UI 구현 및 `main.py`와 통합 (P.6, P.7) |
-
-역할 분담
-
-| **팀원** | **주력 역할** | **책임 스펙**  |
-| --- | --- | --- |
-| 팀장 | **애플리케이션 & MLOps** | **API 설계, Docker, 클라우드 배포** |
-| 팀원 2 | RAG 로직 개발 | LangChain/LlamaIndex 체인 설계, 검색 최적화 |
-| 팀원 3 | 프롬프트 및 평가 | 환각 방지, 성능 지표(Relevance, Faithfulness) 측정 |
-| 팀원 4 | 데이터 엔지니어링 | 문서 수집, **기술 문서 Chunking 전략** 수립 |
-| 팀원 5 | 벡터 DB 및 환경 | Vector DB 구축 및 관리, Git Repository 총괄 |
-
-역할분담 세부화
-
-| **팀원** | **주력 역할** | **세부 책임 스펙 (Deliverables)** |
-| --- | --- | --- |
-| **팀장** | **애플리케이션 & MLOps (시스템 아키텍트)** | 1. **FastAPI** 기반 API 서버 설계 및 구축 (POST /ask 엔드포인트). 2. **Docker/Docker Compose** 환경 구축 및 통합. 3. **클라우드(AWS/GCP)** 배포 파이프라인 구축 및 서비스 URL 확보. 4. 프로젝트 일정 및 최종 포트폴리오 문서화 총괄 |
-| **팀원 2** | **RAG 코어 로직 개발 (AI/ML 엔지니어)** | 1. **LangChain/LlamaIndex 체인**의 **Retriever & Generator** 구현. 2. **참조 출처 제시 기능** 필수 구현. 3. 검색 성능 최적화 (다양한 검색 기법 실험) |
-| **팀원 3** | **프롬프트 및 평가 (LLM/NLP 연구원)** | 1. **환각(Hallucination) 방지** 및 답변 품질 향상 프롬프트 엔지니어링. 2. **테스트 셋** 구축 및 객관적 평가 지표(Relevance, Faithfulness) 정의. 3. RAG 적용 전후 **성능 분석 및 시각화** 총괄 |
-| **팀원 4** | **데이터 엔지니어링 (데이터 스페셜리스트)** | 1. **LangChain 공식 문서 크롤링 및 수집**. 2. **코드 블록, 함수 명세** 보존을 위한 구조 기반 **청킹(Chunking) 전략 수립 및 구현** (가장 중요). 3. 전처리된 데이터 최종 제공 |
-| **팀원 5** | **벡터 DB & 환경 (DevOps/인프라)** | 1. **Vector DB (Chroma/Pinecone 등)** 구축 및 관리. 2. 임베딩 모델 선정 및 초기 데이터 적재. 3. **Git Repository** 총괄 및 코드 버전 충돌 방지 관리. 4. **Solar API 키 안전한 환경 변수** 설정 관리 |
-
-1단계: 지식 베이스 구축 (데이터 파이프라인)
-
-| **담당 팀** | **주요 업무 (Task)** | **상세 요구 사항**  | **협업 및 검증** |
-| --- | --- | --- | --- |
-| **팀원 4** | **문서 수집 및 전처리** | LangChain 공식 문서(Markdown/HTML) 대상 크롤러 구현. **재귀적 분할(`RecursiveCharacterTextSplitter` 등)**을 활용하여 코드 블록(````), 함수 시그니처가 한 덩어리에 포함되도록 **구조 기반 청킹** 전략 구현 및 문서화 | 팀원 5에게 전처리된 텍스트 데이터와 청킹 전략 문서 전달 |
-| **팀원 5** | **벡터 DB 환경 구축 및 적재** | **Vector DB (예: Chroma)** 컨테이너 환경 구축. **임베딩 모델(예: ko-sbert-multitask 등)** 선정 및 파이프라인 통합. 팀원 4의 데이터를 DB에 적재하는 초기 스크립트 작성 | 팀원 2는 DB 연결이 가능한지 테스트용 스크립트로 검증 |
-
-2단계: RAG 코어 로직 개발 및 최적화
-
-| **담당 팀** | **주요 업무** | **핵심 요구 사항 (품질)** | 협업 및 검증 |
-| --- | --- | --- | --- |
-| **팀원 2** | **RAG 체인 구현** | **LangChain**을 사용하여 Retriever(검색)와 Generator(생성)를 연결하는 기본 체인 구현. **참조 출처 제시 기능**을 반드시 포함해 구현 | 팀원 3이 정의한 테스트 셋으로 초기 QA 검증. 팀장(너)에게 API 통합을 위한 모듈 제공 |
-| **팀원 3** | **성능 정의 및 최적화** | **LangChain 관련 용어**에 대한 **환각(Hallucination)** 방지 프롬프트 설계. 답변의 **정확도**를 측정할 수 있는 테스트 셋과 **객관적인 평가 지표**를 정의 | 팀원 2는 프롬프트 엔지니어링 결과를 체인에 통합 |
-| **팀원 5** | **Git 통합** | 팀원 2, 3이 개발한 코드를 Git으로 관리하고, **버전 충돌** 없이 안정적으로 메인 브랜치에 통합되도록 관리 | 전원, 코드 충돌 없이 안정적인 버전 관리 체계 준수 |
-
-3단계: 애플리케이션 서비스화 및 배포(MLOps)
-
-| **담당 팀** | **주요 업무** | **핵심 요구 사항 (품질)** | 협업 및 검증 |
-| --- | --- | --- | --- |
-| 나 | **API 설계 및 통합** | **FastAPI**로 RAG 로직을 호출하는 **API 서버** 구축. 팀원 2가 만든 RAG 로직을 안정적으로 API 엔드포인트(`POST /ask`)에 통합 | 팀원 2, 3은 API 엔드포인트 명세서에 따라 테스트 준비 |
-| 나 | **MLOps 환경 구축** | 팀원 4, 5의 **DB/데이터 적재** 과정까지 포함된 **Docker 환경** 구축. 클라우드(AWS/GCP)에 Docker 이미지를 배포하여 서비스 URL을 확보 | 팀원 5는 Docker 환경에서 DB가 정상 작동하는지 확인 |
-| 팀원 2, 3 | **API 테스트** | 배포된 API에 정의된 **평가 지표 테스트 셋**을 적용하여, **API가 안정적으로 답변**하는지 검증 | 최종 API 안정성 확보 후 공유해주기 |
-
-4단계: 최종 평가 및 발표 준비 (Wrap-up)
-
-| **담당 팀** | **주요 업무** | **핵심 요구 사항 (품질)** |
-| --- | --- | --- |
-| **팀원 3** | **최종 성능 분석** | RAG 적용 전(Plain LLM)과 적용 후의 **답변 정확도 변화**를 **그래프/수치**로 시각화하여 프로젝트의 성과를 명확하게 증명 |
-| 나 | **포트폴리오 문서화** | **문제 → 해결 방식 → End-to-End API 배포 과정 (Docker, 클라우드) → 최종 성과** 순으로 프로젝트 흐름 정리 |
-| **전원** | **발표 준비(수요일)** | 각자의 주력 파트(데이터 전략, RAG 로직, MLOps)를 중심으로 **발표 스크립트**를 작성하고 발표회 준비 |
 
 ---
 
-## 세부 공유사항
+## 3. 시작하는법 (Quick Start Guide)
 
-### 1. 전원 공통: 프로젝트 환경설정 확정
+### 3.1. 환경 설정
 
-| **담당** | **세부 확정 사항** | **구체적인 가이드라인 (링크 포함)** |
-| --- | --- | --- |
-| **팀원 5** | **Solar API 키 보안 환경 변수 이름** | `SOLAR_API_KEY`를 공식 이름으로 확정하고 팀 전체에 공유. 팀원 2는 이 변수를 코드에서 사용해야 함 |
-| **팀원 5** | **Git 브랜치 전략** | **`main`** 브랜치는 배포 가능한 안정 버전만 유지. 모든 개발은 **`feature/기능명`** 브랜치에서 진행하고, PR(Pull Request)을 통해 **코드 리뷰**를 거쳐 `main`에 병합하는 Git Flow 전략을 필수 적용 |
-| **전원** | **코딩 표준 (PEP 8, 20, 484)** | 모든 파이썬 코드는 **PEP 8(스타일)**, **PEP 20(철학)**, PEP 484(타입 힌트)를 **준수**. 자동 포맷팅 도구(예: `Black`, `isort`)를 프로젝트에 도입해서 코딩 스타일 충돌을 미리 막아야 함 |
+1.  프로젝트 루트 경로에 `.env` 파일을 생성하고 **Upstage API Key**를 추가합니다.
 
-### 2. 단계별 핵심 스펙 및 가이드라인
-
-**1단계: 지식 베이스 구축 (팀원 4, 5)**
-
-| **담당** | **핵심 요구 사항** | **작업 전 추가 확정 및 공유 사항** |
-| --- | --- | --- |
-| **팀원 4** | **문서 수집 및 청킹 전략** | **1. 크롤링 대상 URL 확정:** LangChain 공식 문서의 **최상위 도메인 및 하위 경로** 리스트를 팀원 5와 공유. **2. 청킹 전략 확정:** `RecursiveCharacterTextSplitter`를 사용하여 `chunk_size` (예: 1000) 및 `chunk_overlap` (예: 200)을 실험 후 결정. 특히 **코드 블록(```)과 함수 명세가 한 청크에 보존**되도록 분할 규칙을 세밀하게 조정 |
-| **팀원 5** | **Vector DB 및 임베딩 모델** | **1. Vector DB 확정:** ChromaDB 또는 다른 DB 중 최종 사용할 DB 확정. **2. 임베딩 모델 확정:** `all-MiniLM-L6-v2`나 **한국어 모델** 중 어떤 것을 사용할지 확정하고 팀원 2와 공유. 임베딩 모델 선택이 RAG 성능에 크게 영향을 줌 |
-
-2단계: RAG 코어 로직 개발 (팀원 2, 3)
-
-| **담당** | **핵심 요구 사항** | **작업 전 추가 확정 및 공유 사항** |
-| --- | --- | --- |
-| **팀원 2** | **RAG 체인 및 출처 제시** | **1. Chain 구현 방식 확정:** **LCEL (LangChain Expression Language)** 사용을 필수로 결정하고 작업해야 해. **2. 출처 포함 로직:** 검색된 문서(`Document` 객체)의 **`metadata`**에 있는 **`source`** (URL 또는 파일 경로) 필드를 답변에 포함하는 구체적인 프롬프트 템플릿을 팀원 3과 협의 |
-| **팀원 3** | **프롬프트 및 평가** | **1. 프롬프트 구조 확정:** "다음 참고 자료(`Context`)를 바탕으로 질문(`Question`)에 답변하되, 참고 자료에 없는 내용은 답변하지 마세요."와 같은 **시스템 프롬프트**를 확정하고 팀원 2에게 전달. **2. 평가 도구 확정:** `Ragas` 같은 평가 프레임워크를 사용할지 아니면 수동으로 평가할지 결정 |
-
-3단계: 애플리케이션 서비스화 및 배포 (나)
-
-| **담당** | **핵심 요구 사항** | **작업 전 추가 확정 및 공유 사항** |
-| --- | --- | --- |
-| 나 | **API 설계** | **FastAPI**의 **요청(Request) 및 응답(Response) 데이터 형식**을 **Pydantic** 모델로 명확하게 정의해서 팀원 2, 3과 공유 |
-|  |  | **요청 모델 (POST /ask):** `{"question": str}` |
-|  |  | **응답 모델 (200 OK):** `{"answer": str, "sources": List[str]}` (참조 출처는 팀원 2가 제공) |
-| 나 | **MLOps 환경 구축** | **1. Docker 환경 확정:** `Dockerfile`에 **Python 버전**, **OS 베이스 이미지**, **의존성 설치 순서**를 명시. **2. 클라우드 확정:** **AWS EC2**나 **GCP Cloud Run** 중 **최종 배포 플랫폼**을 확정하고 환경설정 비용 계획을 세움 |
-
-팀원 4 (데이터 엔지니어링) - 지식 베이스 구축의 핵심
-
-| **작업 모듈** | **필수 구현 사항** | **핵심 링크 및 가이드라인** |
-| --- | --- | --- |
-| **데이터 수집** | LangChain 공식 문서 크롤링 및 수집 | **WebBaseLoader** 또는 **SitemapLoader**를 사용해 문서를 가져오는 코드를 작성 |
-| **텍스트 분할** | 코드 블록/함수 명세 보존 청킹 전략 구현 | **LangChain Splitters** 공식 문서 참고: `https://docs.langchain.com/oss/python/integrations/splitters` (P.18) |
-| **전처리 결과** | `Document` 객체 형태로 팀원 5에게 전달 | **`text`** (분할된 텍스트)와 **`metadata`** (`source` URL 포함)가 반드시 포함되어야 해. |
-
-팀원 5 (벡터 DB 및 환경) - 시스템 인프라 책임자
-
-| **작업 모듈** | **필수 구현 사항** | **핵심 링크 및 가이드라인** |
-| --- | --- | --- |
-| **환경 설정** | **`SOLAR_API_KEY`** 환경 변수 안전하게 설정 | **`.env`** 파일을 관리하고, 팀원 2가 사용할 수 있도록 환경 변수 로딩 스크립트 작성 및 공유 |
-| **임베딩** | 임베딩 모델 선정 및 통합 | **Upstage Embed API** 또는 **OpenAI Embeddings** 중 하나를 선택: `https://console.upstage.ai/docs/capabilities/embed` (P.18) |
-| **Vector DB** | Vector DB 환경 구축 및 초기 데이터 적재 | **ChromaDB** 사용 시 공식 문서 참고: `https://python.langchain.com/docs/integrations/vectorstores/chroma/` (P.18) **`vector_database.py`** 모듈 담당 |
-
-팀원 2 (RAG 코어 로직 개발) - 챗봇의 두뇌 구현
-
-| **작업 모듈** | **필수 구현 사항** | **핵심 링크 및 가이드라인** |
-| --- | --- | --- |
-| **RAG 체인** | **Retriever & Generator** 연결하는 메인 체인 구현 | **`retriever.py`** 모듈을 통해 Vector DB에서 문서를 검색(조회)하는 기능(`Retrieval`) 구현. **참조 출처 제시 기능**은 필수 기능으로 구현 |
-| **LLM 모듈** | Solar API 호출 및 통합 | **`llm.py`** 모듈 담당. `SOLAR_API_KEY` 환경 변수를 로드하여 LLM을 호출하는 함수를 구현 |
-| **멀티턴 기능** | **대화 기록(Memory)** 유지 기능 구현 | **LangChain Memory** 공식 문서 참고: `https://python.langchain.com/docs/how_to/chatbots_memory/` (P.21) |
-
-팀원 3 (프롬프트 및 평가) - 답변 품질 및 검증 책임
-
-| **작업 모듈** | **필수 구현 사항** | **핵심 링크 및 가이드라인** |
-| --- | --- | --- |
-| **프롬프트** | **환각 방지 System Prompt** 설계 | **`prompts.py`** 모듈 담당. LLM이 검색된 문서를 기반으로 답변하도록 제어하는 **System Prompt 엔지니어링**을 진행 (P.6) |
-| **평가 기능** | 챗봇의 검색 및 답변 성능 평가 기능 구현 | 답변의 **정확도(Faithfulness)**, **출처 관련성(Relevance)** 등을 측정할 테스트 셋(질문 리스트 10개 이상)을 정의하고, 평가 코드를 작성(P.6, P.15) |
-| **README.md** | 최종 제출 문서의 품질 관리 | **문제 배경, 사용자 시나리오(10개 질문 리스트)**, 프로젝트 성과를 기술하여 발표 자료와 포트폴리오를 뒷받침 (P.15) |
-
-(팀장) (API 설계 및 MLOps) - 프로젝트 통합 및 배포
-
-| **작업 모듈** | **필수 구현 사항** | **핵심 링크 및 가이드라인** |
-| --- | --- | --- |
-| **최종 통합** | `main.py` 파일 최종 완성 | 팀원 2의 RAG 로직, 팀원 5의 DB, 팀원 3의 프롬프트 등을 `main.py`에 통합하여 **한 번에 실행**되고 답변을 얻는 기능을 구현(P.6) |
-| **API 서비스화** | FastAPI 엔드포인트 구축 | `POST /ask` 엔드포인트를 구축하고, `llm.py`, `retriever.py` 모듈을 호출하도록 설계 |
-| **MLOps** | Docker 환경 구축 및 클라우드 배포 | `Dockerfile`과 `docker-compose.yml`을 작성하여 DB 환경까지 포함한 **통합 환경**을 클라우드(AWS/GCP)에 배포 |
-| **UI 개발** | `demo.py`를 통한 UI 개발 | **Gradio** 또는 **Streamlit** 중 하나를 선택하여 최종 챗봇 UI를 개발 (P.8) |
-
-
-
-### Git 브랜치 전략 (Git Flow 경량화)
-
-OT 자료(P.7)에서 **모듈별 Branch** 사용을 요구했는데,
-이는 **Git Flow**의 핵심을 따르는 것
-
-| **브랜치 이름** | **목적** | **담당 팀원 (주요 기능)** |
-| --- | --- | --- |
-| **`main`** | **프로덕션/배포 안정 버전** | **팀원 5 (총괄 관리)**: PR이 승인된 코드만 병합 |
-| **`develop`** | **통합 개발 환경** | 모든 기능 브랜치가 1차적으로 병합되는 브랜치 |
-| **`feature/data-pipeline`** | 문서 수집 및 청킹 전략 구현 | **팀원 4** |
-| **`feature/vector-store`** | 벡터 DB 환경 구축 및 초기 데이터 적재 | **팀원 5** |
-| **`feature/rag-core`** | RAG 체인 로직 및 멀티턴 메모리 구현 | **팀원 2** |
-| **`feature/prompt-and-eval`** | 프롬프트 엔지니어링 및 성능 평가 코드 | **팀원 3** |
-| **`feature/api-service`** | FastAPI API 서버 및 MLOps 환경 구축 | **너 (팀장)** |
-| **`feature/chatbot-ui`** | Gradio/Streamlit UI 개발 (`demo.py`) | **너 (팀장)** |
-
-### 최종 확정 프로젝트 환경 및 버전
-
-| **구분** | **확정 버전** | **비고** |
-| --- | --- | --- |
-| **Python** | **3.11.9** | 현재 시점(2025.10.28)에서 성능, 안정성, 호환성을 모두 갖춤 |
-| **패키지 관리** | `pip` (최신) | `pip install --upgrade pip`로 항상 최신 상태 유지 |
-
-### requirements.txt
-
-```python
-# Python Version: 3.11.9 호환성 최적화
-
-# 1. RAG Core & Data Model (팀원 2, 4, 팀장)
-langchain~=0.1.20
-pydantic~=2.7.1
-beautifulsoup4~=4.12.3  # 웹 크롤링 시 HTML 파싱 보조
-html2text~=2024.2.26    # 크롤링된 HTML을 텍스트로 변환
-tiktoken~=0.6.0         # 토큰화 유틸리티
-
-# 2. LLM & Embedding (팀원 2, 5)
-upstage-client~=0.0.8   # Solar API 공식 클라이언트
-
-# 3. Vector Database (팀원 5)
-chromadb~=0.4.24
-
-# 4. API Server (팀장)
-fastapi~=0.110.0
-uvicorn[standard]~=0.28.0
-
-# 5. UI (팀장)
-streamlit~=1.32.2       # Streamlit을 UI 프레임워크로 확정
-
-# 6. Utilities & Environment (팀원 5)
-python-dotenv~=1.0.1    # 환경 변수 로드
-```
-
-```python
-# 1. 가상 환경 생성 (최초 1회)
-python3.11 -m venv .venv
-
-# 2. 가상 환경 활성화
-source .venv/bin/activate  # macOS/Linux
-.venv\Scripts\activate      # Windows
-
-# 3. 라이브러리 설치 (최초 1회 및 업데이트 시)
-pip install -r requirements.txt
-```
-
-## 뭐부터 해야할지 감 안올때
-
-| **순서** | **단계** | **주요 목표** | **담당 팀원** |
-| --- | --- | --- | --- |
-| **1순위** | **지식 베이스 구축 (RAG의 연료)** | LangChain 문서를 수집, 분할, 벡터화하여 Vector DB에 안정적으로 적재 | **팀원 4, 5** |
-| **2순위** | **RAG 코어 로직 개발** | LLM 호출(`Solar API`) 및 검색 로직(`Retriever`)을 연결하여 정확한 답변을 생성하고 멀티턴 기능을 구현 | **팀원 2, 3** |
-| **3순위** | **애플리케이션 서비스화 및 배포** | RAG 로직을 **FastAPI API**로 만들고, **Docker** 환경을 구축하여 **클라우드**에 배포 | **너 (팀장)** |
-| **4순위** | **평가 및 발표** | 답변 성능을 평가하고, 모든 과정을 포트폴리오(README.md)로 완벽하게 문서화 | **전원** |
-
-## 2. 당장 시작해야 할 첫 번째 작업 (1단계 돌입)
-
-지금부터는 **GitHub 저장소**를 만들고 각자 **로컬 개발 환경**을 구축하는 것이 우선
-
-### A. 팀원 5: 환경 구축 및 저장소 관리 (가장 먼저 시작)
-
-- **저장소 생성 및 브랜치 전략 확립:**
-    - *팀 저장소(Organization Repository)를 생성하고 팀원 5명을 모두 초대.
-    - **`main`** 브랜치에서 **`develop`** 브랜치를 생성하고, 이 브랜치를 기준으로 작업 시작 지점을 공유.
-- **환경 변수 확정:**
-    - **`.env.example`** 파일을 생성하여 `SOLAR_API_KEY` 변수 이름과 사용법을 명시하고 팀에 공유.
-    - `requirements.txt`에 초기 필수 라이브러리(예: `langchain`, `fastapi`, `uvicorn`, `chromadb` 등)를 정의
-- **1단계 모듈 작업:**
-    - `src/modules/vector_database.py` 파일의 기본 구조를 만들고, Chroma DB를 초기화하는 코드 초안을 작성.
-    - 작업 후 **`feature/vector-store`** 브랜치를 만들어 커밋하고 `develop`에 PR 요청.
-
-### B. 팀원 4: 데이터 수집 및 청킹 전략 확정
-
-- **데이터 수집 스크립트 작성:**
-    - LangChain 공식 문서를 크롤링하는 스크립트(예: `WebBaseLoader` 사용)를 작성하고 실행하여 **원본 문서 파일**을 `data/raw` 폴더에 수집.
-- **핵심 청킹 전략 구현:**
-    - `src/utils/chunking_strategy.py` 파일에 **`RecursiveCharacterTextSplitter`*를 사용하여 코드 블록 보존을 최적화하는 **청킹 함수**를 작성 (팀원 5와 협의하여 청크 크기, 오버랩 크기 확정)
-    - 작업 후 **`feature/data-pipeline`** 브랜치를 만들어 커밋하고 `develop`에 PR 요청
-
-### C. 너 (팀장): API 및 MLOps 설계 시작
-
-- **디렉토리 구조 생성:**
-    - 위에서 합의한 디렉토리 구조(특히 `src/` 폴더 내부)를 Git 저장소에 반영하는 초기 커밋 수행.
-- **API 명세 확정 및 초안 작성:**
-    - `src/main.py` 파일에 **FastAPI 서버**의 기본 구조를 만들고, Pydantic을 사용한 **요청/응답 스키마(POST /ask)**를 정의
-- **MLOps 환경 설계:**
-    - *`Dockerfile`*과 **`docker-compose.yml`** 파일의 초안을 작성하여, API 서버와 벡터 DB 컨테이너를 어떻게 통합할지 기본 설계를 시작.
-
-### D. 팀원 2, 3: 기능 정의 및 평가 준비
-
-- **팀원 3 (평가):**
-    - `data/tests` 폴더에 LangChain 문서와 관련된 **사용자 질문 10개 이상**을 포함하는 **테스트 셋(질문, 예상 답변, 참조 출처)** 작성을 즉시 시작. (프로젝트의 성공 기준)
-- **팀원 2 (RAG 로직):**
-    - `src/modules/retriever.py` 파일에 RAG 체인의 **뼈대 함수**(`def get_rag_chain():`)를 미리 정의하고, 어떤 방식으로 참조 출처를 포함할지 **기술적인 전략**을 조사
-
-> 기억해: 모든 코드는 PEP 8을 준수해야 하며, 모든 기능 구현은 feature/ 브랜치에서 시작
->
-
-
-
-
-
-
-
-
-
-
-
-
-
-# **프로젝트 제목**  
-프로젝트의 간단한 소개와 목적을 작성합니다.  
-- **프로젝트 기간:** YYYY.MM.DD ~ YYYY.MM.DD  
-- **배포 링크:** [서비스 바로가기](링크 입력) *(필요 시 추가)*  
-
----
-
-## **1. 서비스 구성 요소**  
-### **1.1 주요 기능**  
-- 기능 1: *(주요 기능 간단 설명)*  
-- 기능 2: *(주요 기능 간단 설명)*  
-- 기능 3: *(주요 기능 간단 설명)*  
-
-### **1.2 사용자 흐름**  
-- 사용자 시나리오 예시:  
-  1. *(유저 행동 1 설명)*  
-  2. *(유저 행동 2 설명)*  
-
----
-
-## **2. 활용 장비 및 협업 툴**  
-
-### **2.1 활용 장비**  
-- **서버 장비:** *(예: AWS EC2 t2.medium)*  
-- **개발 환경:** *(예: Ubuntu 20.04, Windows 11)*  
-- **테스트 장비:** *(예: MacBook Pro, GPU RTX 3090)*  
-
-### **2.2 협업 툴**  
-- **소스 관리:** GitHub  
-- **프로젝트 관리:** Jira, Notion  
-- **커뮤니케이션:** Slack  
-- **버전 관리:** Git  
-
----
-
-## **3. 최종 선정 AI 모델 구조**  
-- **모델 이름:** *(예: BERT, GPT-4, YOLOv8)*  
-- **구조 및 설명:** *(모델의 세부 구조 및 특징 설명)*  
-- **학습 데이터:** *(데이터 출처 및 전처리 방법 설명)*  
-- **평가 지표:** *(정확도, F1-Score, RMSE 등 평가 기준 설명)*  
-
----
-
-## **4. 서비스 아키텍처**  
-### **4.1 시스템 구조도**  
-서비스 아키텍처 다이어그램을 첨부합니다. *(예: 이미지, 다이어그램)*  
-
-![서비스 아키텍처 예시](링크 입력)  
-
-### **4.2 데이터 흐름도**  
-- 데이터 처리 및 서비스 간 연결 흐름 설명  
-- 예시:  
-  1. 사용자 입력 → AI 분석 → 결과 반환  
-  2. 데이터 저장 → 전처리 → 모델 적용  
-
----
-
-## **5. 사용 기술 스택**  
-### **5.1 백엔드**  
-- Flask / FastAPI / Django *(필요한 항목 작성)*  
-- 데이터베이스: SQLite / PostgreSQL / MySQL  
-
-### **5.2 프론트엔드**  
-- React.js / Next.js / Vue.js *(필요한 항목 작성)*  
-
-### **5.3 머신러닝 및 데이터 분석**  
-- TensorFlow / PyTorch  
-- scikit-learn / Pandas / NumPy  
-
-### **5.4 배포 및 운영**  
-- AWS EC2 / S3 / Lambda  
-- Docker / Kubernetes / GitHub Actions  
-
----
-
-## **6. 팀원 소개**  
-
-| 이름      | 역할              | GitHub                               | 담당 기능                                 |
-|----------|------------------|-------------------------------------|-----------------------------------------|
-| **홍길동** | 팀장/백엔드 개발자 | [GitHub 링크](링크 입력)             | 서버 구축, API 개발, 배포 관리            |
-| **김철수** | 프론트엔드 개발자  | [GitHub 링크](링크 입력)             | UI/UX 디자인, 프론트엔드 개발             |
-| **이영희** | AI 모델 개발자    | [GitHub 링크](링크 입력)             | AI 모델 선정 및 학습, 데이터 분석         |
-| **박수진** | 데이터 엔지니어    | [GitHub 링크](링크 입력)             | 데이터 수집, 전처리, 성능 평가 및 테스트   |
-
----
-
-## **7. Appendix**  
-### **7.1 참고 자료**  
-- 논문 및 문서: *(참고 논문 또는 기술 문서 링크 추가)*  
-- 데이터 출처: *(데이터셋 링크 또는 설명)*  
-- 코드 참고 자료: *(레퍼런스 코드 또는 문서 링크)*  
-
-### **7.2 설치 및 실행 방법**  
-1. **필수 라이브러리 설치:**  
     ```bash
-    pip install -r requirements.txt
+    # .env
+    UPSTAGE_API_KEY=YOUR_API_KEY_HERE
+    FASTAPI_URL=http://localhost:8000
+
+    CHROMA_HOST=chromadb # Docker 내부 통신용
+    CHROMA_PORT=8000
     ```
 
-2. **서버 실행:**  
-    ```bash
-    python app.py
-    ```
+2.  **Docker**와 **Docker Compose**가 설치되어 있는지 확인합니다.
 
-3. **웹페이지 접속:**  
-    ```
-    http://localhost:5000
-    ```
+### 3.2. 프로젝트 빌드 및 실행
 
-### **7.3 주요 커밋 기록 및 업데이트 내역**  
+```bash
+# 1. Docker 컨테이너 빌드 및 실행
+docker-compose up --build -d
+```
 
-| 날짜         | 업데이트 내용                              | 담당자      |
-|-------------|------------------------------------------|------------|
-| YYYY.MM.DD  | 초기 프로젝트 세팅 및 환경 설정 추가          | 홍길동      |
-| YYYY.MM.DD  | AI 모델 최적화 및 성능 개선                   | 이영희      |
-| YYYY.MM.DD  | UI 디자인 및 페이지 구조 업데이트              | 김철수      |
-| YYYY.MM.DD  | 데이터 전처리 및 분석 코드 추가                | 박수진      |
-| YYYY.MM.DD  | 배포 환경 설정 및 Docker 이미지 구성           | 홍길동      |
+### 3.3. 벡터 DB 초기화 및 문서 적재
+컨테이너가 실행된 후, 기술 문서를 크롤링하고 벡터 데이터베이스에 적재하는 스크립트를 실행해야 합니다.
+
+```
+# Docker 컨테이너 내부에서 스크립트 실행
+# (--reset: 기존 DB 삭제 후 재시작, --max-pages: 크롤링할 최대 페이지 수 제한)
+
+docker exec -it fastapi-rag-api python initialize_vector_db.py --reset --max-pages 100
+
+#  참고: --max-pages 0으로 설정하면 전체 문서를 크롤링합니다.
+```
+
+### 3.4. 접속 정보
+서비스,URL
+
+RAG 챗봇 UI (Streamlit),http://localhost:8501
+
+FastAPI 문서 (Swagger UI),http://localhost:8000/docs
+
+
+### 4. 테스트 및 견고성 증명
+프로젝트의 견고함은 Pytest를 통해 검증되었습니다.
+
+### 4.1. 테스트 실행
+Bash
+#### FastAPI 컨테이너 내부에서 Pytest 실행
+
+```
+docker exec fastapi-rag-api pytest tests/
+```
+
+### 4.2. 테스트 커버리지
+
+테스트 파일테스트 종류
+
+주요 검증 내용
+
+#### tests/test_llm.py
+
+유닛 테스트
+
+LLM 연결, 모델 이름, API 인증 및 간단한 쿼리 응답 성공 여부 확인
+
+#### tests/test_retriever.py
+
+통합 테스트
+
+ChromaDB 연결, 검색 정확도, LCEL RAG 체인의 동작 및 환각(Hallucination) 방지 로직 검증
+
+
+### 5. 유지보수 및 확장성 
+
+독립적인 서비스: 모든 구성 요소가 Docker 컨테이너로 분리되어 있어, LLM 모델 교체나 벡터 DB(예: Pinecone, Weaviate) 교체가 용이합니다.
+
+배포 안정성: docker-compose.yml의 healthcheck 설정은 서비스가 **완벽히 준비**된 후에 다음 서비스가 시작되도록 보장하여, 배포 시의 의존성 오류를 방지합니다.
+
+
+### 6. 참고 자료
+
+LangChain Expression Language (LCEL) 공식 문서
+
+Upstage Solar LLM API 및 임베딩 모델 가이드
+
+FastAPI 및 Streamlit 공식 문서
+
+
 

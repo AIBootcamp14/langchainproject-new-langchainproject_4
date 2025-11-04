@@ -1,66 +1,79 @@
-# Docker Compose Version: 구형 환경 호환을 위해 version 라인 제거
+version: '3.8'
 
 services:
-  # --- 1. Vector Database: ChromaDB ---
+
+  # 1. 벡터 데이터베이스 서비스 (ChromaDB)
   chromadb:
-    image: chromadb/chroma:0.4.24
-    container_name: vector_db
+    image: chromadb/chroma:latest
+    container_name: chroma-server
+    ports:
+      - "8001:8000" # ChromaDB의 기본 포트는 8000이지만, Docker Compose 외부에서 8001로 접근하도록 설정
+    volumes:
+      - chroma_data:/app/chroma/chroma
+    environment:
+      # 로컬 개발 환경용 설정 (프로덕션에서는 더 견고한 설정 필요)
+      - IS_PERSISTENT=TRUE 
+      - ALLOW_RESET=TRUE
+    
+    # 💡 [핵심 추가]: ChromaDB 헬스 체크 로직 추가
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8000/api/v1/heartbeat || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s # ChromaDB가 초기화될 시간을 줌
+
+  # 2. RAG 백엔드 API 서비스 (FastAPI)
+  fastapi-api:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: fastapi-rag-api
     ports:
       - "8000:8000"
-    volumes:
-      - chroma-data:/chroma/chroma
     environment:
-      # ChromaDB 데이터 영구 저장 설정
-      - IS_PERSISTENT=TRUE
-      - PERSIST_DIRECTORY=/chroma/chroma
-      - ANONYMIZED_TELEMETRY=FALSE
-    networks:
-      - rag-network
-    restart: unless-stopped
-    # Healthcheck 블록 없음.
-
-  # --- 2. LangChain RAG Application (FastAPI & Streamlit) ---
-  rag-app:
-    # 🚨 구형 문법으로 변경: build: 다음에 컨텍스트 경로만 한 줄로 지정
-    build: . 
-    
-    container_name: rag-application
-    
-    # 💡 환경 변수 주입 추가
-    env_file: .env 
-    
-    # 외부 포트: 8501 (Streamlit), 8080 (FastAPI)
-    ports:
-      - "8501:8501"
-      - "8080:8080"
-    volumes:
-      # 개발 편의성을 위해 현재 디렉토리 전체를 마운트
-      - .:/app 
-      - /app/node_modules # 노드 모듈 제외 (필요 시)
-    environment:
-      # ChromaDB 연결 정보 (컨테이너 이름과 포트 사용)
-      - CHROMA_HOST=vector_db
+      # API 환경 변수 설정
+      - UPSTAGE_API_KEY=${UPSTAGE_API_KEY}
+      # ChromaDB 연결 주소 (Docker 네트워크 이름)
+      - CHROMA_HOST=chromadb 
       - CHROMA_PORT=8000
-      - PYTHONUNBUFFERED=1
-      # 🚨 UPSTAGE_API_KEY 설정 줄은 env_file로 대체되므로 삭제하거나 주석 처리해야 함!
-      # - UPSTAGE_API_KEY=${UPSTAGE_API_KEY} 
-      
     depends_on:
+      # FastAPI는 ChromaDB가 준비된 후에 시작
       chromadb:
-        condition: service_started
-    networks:
-      - rag-network
-    restart: unless-stopped
+        condition: service_healthy # 헬스 체크가 성공해야만 시작
     
-    # FastAPI와 Streamlit을 동시에 백그라운드에서 실행
-    command: sh -c "uvicorn src.main:app --host 0.0.0.0 --port 8080 --reload & streamlit run src/streamlit_app.py --server.port 8501 --server.enableCORS false"
+    # 💡 [핵심 수정]: start_api.py를 실행하도록 명령어 변경
+    command: python start_api.py 
 
-# --- 3. Network Definition (서비스 간 통신) ---
-networks:
-  rag-network:
-    driver: bridge
+    # 💡 [핵심 추가]: FastAPI 헬스 체크 로직 추가
+    healthcheck:
+      # FastAPI의 /health 엔드포인트가 'ready' 상태를 반환하는지 확인
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+      
+  # 3. Streamlit 프론트엔드 UI 서비스
+  streamlit-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: streamlit-rag-ui
+    ports:
+      - "8501:8501" # Streamlit 기본 포트
+    environment:
+      # Streamlit에서 FastAPI로 접속할 주소 설정 (Docker 네트워크 이름)
+      # Streamlit에서 FastAPI를 호출할 때 Docker 네트워크 내부 주소 사용
+      - FASTAPI_URL=http://fastapi-api:8000 
+    depends_on:
+      # Streamlit은 FastAPI가 준비되고 RAG 파이프라인이 초기화된 후에 시작
+      fastapi-api:
+        condition: service_healthy
+        
+    # 💡 [핵심 수정]: Streamlit 실행 명령어만 명확하게 분리
+    command: streamlit run src/streamlit_app.py --server.port 8501 --server.address 0.0.0.0
 
-# --- 4. Volume Definition (데이터 영속성) ---
+# Docker 볼륨 정의
 volumes:
-  chroma-data:
-    driver: local
+  chroma_data:

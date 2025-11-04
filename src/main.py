@@ -1,159 +1,194 @@
 # src/main.py
+
 """
-FastAPI 기반 RAG Chatbot API 서버
-- ChromaDB 연결 (VectorDatabaseClient)
-- RAG 체인 로드 (retriever)
-- /ask 엔드포인트 구현 (질문 및 답변)
+FastAPI 애플리케이션 정의 및 RAG API 엔드포인트
 """
 
 import os
-from typing import Dict, Any, Optional
-import time # os.times() 대신 time.time()을 사용하면 더 범용적
+import time
+import json # 💡 [추가]: 메타데이터 JSON 처리를 위해
+from typing import Dict, Any, Optional, List
 
+# 써드파티 라이브러리
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request 
 from pydantic import BaseModel, Field
-import uvicorn # uvicorn 임포트를 여기에 추가 (if __name__ == "__main__" 내부가 아닌 파일 레벨)
+from starlette.responses import StreamingResponse # 💡 [추가]: 스트리밍을 위한 임포트
 
-# 로컬 모듈 임포트
-from .modules.vector_database import get_persisted_vectorstore
-from .modules.retriever import get_source_aware_rag_chain
+# 프로젝트 모듈
+from src.modules.retriever import RAGRetriever 
+from src.modules.vector_database import VectorDatabaseClient # 타입 힌트를 위해 임포트
 
-# 환경 변수 로드 (API 키 등)
+# 환경 변수 미리 로드
 load_dotenv()
 
-# --- 모델 정의 (Pydantic) ---
+# --- Pydantic 모델 정의 ---
+class QueryModel(BaseModel):
+    """사용자 질문을 위한 입력 스키마"""
+    question: str = Field(..., description="사용자의 RAG 질문")
 
-class Question(BaseModel):
-    """사용자 질문 요청 모델"""
-    question: str = Field(..., description="사용자의 질문 내용", min_length=5, max_length=500)
-    session_id: Optional[str] = Field("default_session", description="사용자 세션 ID (기억/히스토리 기능용)", max_length=50)
+class ResponseModel(BaseModel):
+    """RAG 답변 및 메타데이터를 위한 출력 스키마 (비스트리밍용)"""
+    answer: str = Field(..., description="RAG 챗봇이 생성한 답변")
+    source_urls: Optional[List[str]] = Field(None, description="참조된 원본 문서 URL 리스트")
+    execution_time_ms: int = Field(..., description="RAG 파이프라인 총 실행 시간 (밀리초)")
 
-
-class Answer(BaseModel):
-    """LLM 답변 응답 모델"""
-    answer: str = Field(..., description="LLM이 생성한 답변")
-    sources: list = Field(..., description="답변에 사용된 출처 문서 목록 (url, title)")
-    execution_time_ms: Optional[float] = Field(None, description="실행 시간 (밀리초)")
-
-
-# --- API 서버 초기화 ---
-
-APP_ENV = os.getenv("APP_ENV", "development")
-DEBUG = os.getenv("DEBUG", "True").lower() == "true"
-COLLECTION_NAME = os.getenv("CHROMA_COLLECTION_NAME", "langchain_docs")
-
+# --- FastAPI 앱 및 RAGRetriever 초기화 ---
 app = FastAPI(
-    title="LangChain RAG Chatbot API",
-    description="Solar LLM 및 ChromaDB 기반의 LangChain 문서 질의응답 시스템",
+    title="LangChain Document RAG API",
+    description="Upstage Solar LLM과 ChromaDB를 활용한 LangChain 문서 검색 증강 생성(RAG) API.",
     version="1.0.0",
-    debug=DEBUG
 )
 
-rag_chain = None
-vectorstore = None
+# RAG Retriever 인스턴스를 저장할 변수 (초기화는 startup에서 진행)
+rag_retriever: Optional[RAGRetriever] = None 
 
 
 @app.on_event("startup")
 async def startup_event():
-    global rag_chain, vectorstore
+    """
+    FastAPI 서버 시작 시 RAGRetriever를 초기화하고 종속성을 확인합니다.
+    """
+    global rag_retriever
+    print("\n--- FastAPI Startup: RAG 파이프라인 초기화 중 ---")
     
-    print("🌟 서버 시작 중: RAG 컴포넌트 초기화 시작")
-    
-    # 1. Vector Store (ChromaDB) 로드
-    try:
-        vectorstore = get_persisted_vectorstore(
-            host=os.getenv("CHROMA_HOST"), 
-            collection_name=COLLECTION_NAME,
-        )
-        print(f"✅ 벡터 저장소 로드 성공: 컬렉션 '{COLLECTION_NAME}'")
-    except ConnectionError as e:
-        print(f"❌ ChromaDB 연결 실패: {e}. 'initialize_vector_db.py'를 실행했는지 확인하세요.")
-        raise HTTPException(status_code=503, detail="ChromaDB 서버에 연결할 수 없습니다.")
-    except Exception as e:
-        print(f"❌ 벡터 저장소 초기화 중 예상치 못한 오류 발생: {e}")
-        raise HTTPException(status_code=500, detail="RAG 시스템 초기화 실패.")
-
-    # 2. RAG 체인 로드
-    try:
-        rag_chain = get_source_aware_rag_chain(vectorstore=vectorstore)
-        print("✅ RAG 체인 로드 성공")
-    except Exception as e:
-        print(f"❌ RAG 체인 생성 실패 (LLM/임베딩 오류 가능성): {e}")
-        raise HTTPException(status_code=500, detail="RAG 체인 로드 실패.")
-        
-    print("✅ RAG 컴포넌트 초기화 완료")
-
-
-@app.get("/health", summary="서버 및 DB 상태 확인")
-async def health_check():
-    if vectorstore is None or rag_chain is None:
-        raise HTTPException(status_code=503, detail="RAG 시스템이 초기화되지 않았습니다.")
-        
-    # ChromaDB 연결 상태 재확인
-    db_status = "OK"
-    try:
-        # vectorstore.client.heartbeat() 대신 더 안전한 health check
-        vectorstore.client.count_collections() 
-    except Exception:
-        db_status = "DOWN"
-
-    return {
-        "status": "OK",
-        "service": "RAG Chatbot API",
-        "db_status": db_status
-    }
-
-
-@app.post("/ask", response_model=Answer, summary="질문에 답변 생성")
-async def ask_question(query: Question):
-    if rag_chain is None:
-        raise HTTPException(status_code=503, detail="RAG 시스템이 아직 로드되지 않았습니다.")
-        
-    print(f"\n[요청] 세션 ID: {query.session_id}, 질문: {query.question[:50]}...")
-    
-    try:
-        start_time = time.time() # 시간 측정 시작
-
-        result: Dict[str, Any] = rag_chain.invoke({"question": query.question})
-        
-        end_time = time.time()
-        execution_time_ms = round((end_time - start_time) * 1000, 2)
-        
-        # 출처 문서 정보 추출
-        sources = []
-        for doc in result.get("source_documents", []):
-            sources.append({
-                "url": doc.metadata.get("url"),
-                "title": doc.metadata.get("title"),
-            })
-
-        return Answer(
-            answer=result["answer"],
-            sources=sources,
-            execution_time_ms=execution_time_ms
-        )
-
-    except Exception as e:
-        print(f"❌ RAG 체인 실행 중 오류 발생: {e}")
-        # LLM API 키 오류, 네트워크 오류 등 상세 에러를 숨기지 않고 반환
-        raise HTTPException(status_code=500, detail=f"질문 처리 중 서버 오류가 발생했습니다: {e.__class__.__name__}")
-
-
-# --- 서버 실행 ---
-if __name__ == "__main__":
-    
-    api_host = os.getenv("API_HOST", "0.0.0.0")
-    api_port = int(os.getenv("API_PORT", "8000"))
-    workers = int(os.getenv("WORKERS", "1"))
-    
-    print(f"🚀 Uvicorn 서버 시작: http://{api_host}:{api_port}")
-    
-    uvicorn.run(
-        "src.main:app", # src 폴더 내의 main.py 파일에서 app 객체를 찾음
-        host=api_host, 
-        port=api_port, 
-        workers=workers, 
-        reload=DEBUG,
-        log_level=os.getenv("LOG_LEVEL", "info").lower()
+    # 💡 [개선]: ChromaDB 헬스 체크를 위한 클라이언트를 먼저 초기화
+    vdb_client_check = VectorDatabaseClient(
+        collection_name="langchain_docs", # 컬렉션 이름은 중요하지 않음
+        embedding_model="solar-embedding-1-large"
     )
+    
+    # ChromaDB 연결 테스트
+    if not vdb_client_check.health_check():
+         print("❌ 경고: ChromaDB 연결 실패. RAG 초기화를 건너뜁니다.")
+         return
+    else:
+         print("✅ ChromaDB 연결 확인 성공")
+         
+    try:
+        # RAGRetriever 초기화 (LLM, 임베딩, DB 연결)
+        rag_retriever = RAGRetriever()
+        print("✅ RAGRetriever 초기화 성공")
+
+    except ValueError as e:
+        # API 키 오류 등 치명적 오류 처리
+        print(f"❌ 치명적 오류: RAG 초기화 실패 - {e}")
+        rag_retriever = None 
+    except Exception as e:
+        print(f"❌ 예상치 못한 오류로 RAG 초기화 실패: {e}")
+        rag_retriever = None
+
+
+@app.get("/health", response_model=Dict[str, str])
+def health_check() -> Dict[str, str]:
+    """API 상태 및 종속성 상태를 확인합니다."""
+    status: Dict[str, str] = {"api_status": "ok"}
+    
+    if rag_retriever is None:
+        status["rag_status"] = "uninitialized"
+        status["detail"] = "RAGRetriever가 초기화되지 않았거나 실패했습니다. ChromaDB/API KEY 확인."
+    else:
+        status["rag_status"] = "ready"
+        
+    try:
+        # RAGRetriever가 초기화되었을 때만 ChromaDB 상태 확인
+        if rag_retriever and rag_retriever.vdb_client.health_check():
+            status["chroma_status"] = "ok"
+        else:
+            status["chroma_status"] = "down"
+    except Exception:
+        status["chroma_status"] = "error"
+        
+    return status
+
+
+@app.post("/ask", response_model=ResponseModel)
+async def ask_rag(query: QueryModel, request: Request) -> ResponseModel:
+    """사용자 질문에 대해 RAG 파이프라인을 실행하여 답변을 제공합니다. (비스트리밍)"""
+    
+    if rag_retriever is None:
+        raise HTTPException(
+            status_code=503, 
+            detail="RAG 서비스 초기화 실패. 환경 변수(API KEY)를 확인하세요."
+        )
+
+    question: str = query.question
+    start_time: float = time.time()
+    
+    try:
+        response: Dict[str, Any] = rag_retriever.answer_query(question)
+        
+        end_time: float = time.time()
+        execution_time_ms: int = int((end_time - start_time) * 1000)
+
+        return ResponseModel(
+            answer=response.get("answer", "답변 생성 실패"),
+            source_urls=response.get("source_urls", []),
+            execution_time_ms=execution_time_ms,
+        )
+
+    except Exception as e:
+        print(f"RAG 처리 오류: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"RAG 파이프라인 실행 중 오류가 발생했습니다: {str(e)}"
+        )
+
+
+# 💡 [핵심 추가]: 스트리밍 엔드포인트
+@app.post("/ask/stream")
+async def ask_rag_stream(query: QueryModel) -> StreamingResponse:
+    """사용자 질문에 대해 RAG 파이프라인을 실행하고 답변을 스트리밍으로 제공합니다."""
+    
+    if rag_retriever is None:
+        raise HTTPException(
+            status_code=503, 
+            detail="RAG 서비스 초기화 실패. 환경 변수(API KEY)를 확인하세요."
+        )
+
+    question: str = query.question
+    
+    async def generate_stream():
+        start_time: float = time.time()
+        METADATA_DELIMITER = "\n<END_OF_STREAM_METADATA>" # 스트림 종료 메타데이터 구분자
+        
+        try:
+            # 1. 검색된 문서 미리 가져오기 (출처 URL 추출 및 컨텍스트 구성을 위해)
+            # RAGRetriever.retriever는 VectorStoreRetriever이며, ainvoke를 지원함
+            retrieved_docs: List[Document] = await rag_retriever.retriever.ainvoke(question)
+
+            # 2. RAG 체인을 비동기 스트림(astream)으로 호출
+            stream = rag_retriever.rag_chain.astream(question)
+            
+            # 3. 답변 스트림을 클라이언트에 전송
+            async for chunk in stream:
+                # 각 청크(문자열)를 인코딩하여 전송
+                yield chunk.encode("utf-8")
+                
+            # 4. 스트림 종료 후 메타데이터를 포함한 최종 데이터 전송
+            end_time: float = time.time()
+            execution_time_ms: int = int((end_time - start_time) * 1000)
+            
+            # 출처 URL 추출 (중복 제거)
+            source_urls = list(
+                set(
+                    doc.metadata["url"] 
+                    for doc in retrieved_docs 
+                    if "url" in doc.metadata
+                )
+            )
+            
+            # 메타데이터를 JSON 형태로 전송 (특수 구분자로 본문과 구분)
+            metadata = {
+                "source_urls": source_urls,
+                "execution_time_ms": execution_time_ms
+            }
+            yield f"{METADATA_DELIMITER}{json.dumps(metadata)}".encode("utf-8")
+
+        except Exception as e:
+            error_message = f"RAG 스트림 처리 중 오류 발생: {str(e)}"
+            # 에러 메시지를 메타데이터 형식으로 전달하여 클라이언트가 처리하도록 유도
+            yield f"{METADATA_DELIMITER}{json.dumps({'error': error_message})}".encode("utf-8")
+            
+    # 스트리밍 응답 반환
+    return StreamingResponse(generate_stream(), media_type="text/plain")

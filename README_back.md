@@ -1,35 +1,12 @@
-# 기술 문서 기반 RAG 챗봇 구축 프로젝트
 # data scraping 하고 vector 데이터베이스 구축 한 파일 추가함 
 
 - langchain_docs.json 은 langchin 기술 문서에서 스크래핑 한 데이터임.
 - faiss_langchain_db 는 스크래핑한 데이터로 vector 데이터베이스를 생성함.
 - 작업 했던 코드는 vectorDB.ipynb
 
-역할분담 세부화
 
-| **팀원** | **주력 역할** | **세부 책임 스펙 (Deliverables)** |
-| --- | --- | --- |
-| **팀원 4** | **데이터 엔지니어링 (데이터 스페셜리스트)** | 1. **LangChain 공식 문서 크롤링 및 수집**. 2. **코드 블록, 함수 명세** 보존을 위한 구조 기반 **청킹(Chunking) 전략 수립 및 구현** (가장 중요). 3. 전처리된 데이터 최종 제공 |
-| **팀원 5** | **벡터 DB & 환경 (DevOps/인프라)** | 1. **Vector DB (Chroma/Pinecone 등)** 구축 및 관리. 2. 임베딩 모델 선정 및 초기 데이터 적재. 3. **Git Repository** 총괄 및 코드 버전 충돌 방지 관리. 4. **Solar API 키 안전한 환경 변수** 설정 관리 |
+# 기술 문서 기반 RAG 챗봇 구축 프로젝트
 
-## 세부 공유사항
-
-팀원 4 (데이터 엔지니어링) - 지식 베이스 구축의 핵심
-
-| **작업 모듈** | **필수 구현 사항** | **핵심 링크 및 가이드라인** |
-| --- | --- | --- |
-| **데이터 수집** | LangChain 공식 문서 크롤링 및 수집 | **WebBaseLoader** 또는 **SitemapLoader**를 사용해 문서를 가져오는 코드를 작성 |
-| **텍스트 분할** | 코드 블록/함수 명세 보존 청킹 전략 구현 | **LangChain Splitters** 공식 문서 참고: `https://docs.langchain.com/oss/python/integrations/splitters` (P.18) |
-| **전처리 결과** | `Document` 객체 형태로 팀원 5에게 전달 | **`text`** (분할된 텍스트)와 **`metadata`** (`source` URL 포함)가 반드시 포함되어야 해. |
-
-팀원 5 (벡터 DB 및 환경) - 시스템 인프라 책임자
-
-| **작업 모듈** | **필수 구현 사항** | **핵심 링크 및 가이드라인** |
-| --- | --- | --- |
-| **환경 설정** | **`SOLAR_API_KEY`** 환경 변수 안전하게 설정 | **`.env`** 파일을 관리하고, 팀원 2가 사용할 수 있도록 환경 변수 로딩 스크립트 작성 및 공유 |
-| **임베딩** | 임베딩 모델 선정 및 통합 | **Upstage Embed API** 또는 **OpenAI Embeddings** 중 하나를 선택: `https://console.upstage.ai/docs/capabilities/embed` (P.18) |
-| **Vector DB** | Vector DB 환경 구축 및 초기 데이터 적재 | **ChromaDB** 사용 시 공식 문서 참고: `https://python.langchain.com/docs/integrations/vectorstores/chroma/` (P.18) **`vector_database.py`** 모듈 담당 |
-<!--
 30일 5시~6시 멘토링  
 
 ### 1. 프로젝트 목표와 배경
@@ -458,4 +435,4 @@ pip install -r requirements.txt
 | YYYY.MM.DD  | UI 디자인 및 페이지 구조 업데이트              | 김철수      |
 | YYYY.MM.DD  | 데이터 전처리 및 분석 코드 추가                | 박수진      |
 | YYYY.MM.DD  | 배포 환경 설정 및 Docker 이미지 구성           | 홍길동      |
--->
+

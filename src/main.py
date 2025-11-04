@@ -7,17 +7,22 @@ FastAPI 기반 RAG Chatbot API 서버
 """
 
 import os
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
+import chromadb
+from chromadb.config import Settings
 import time # os.times() 대신 time.time()을 사용하면 더 범용적
 
+from langchain_core.messages import AIMessage, HumanMessage
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
+from .modules.vector_database import get_persisted_vectorstore
+from .modules.retriever import get_conversational_rag_chain
 import uvicorn # uvicorn 임포트를 여기에 추가 (if __name__ == "__main__" 내부가 아닌 파일 레벨)
 
 # 로컬 모듈 임포트
 from .modules.vector_database import get_persisted_vectorstore
-from .modules.retriever import get_source_aware_rag_chain
+from .modules.retriever import get_conversational_rag_chain
 
 # 환경 변수 로드 (API 키 등)
 load_dotenv()
@@ -50,6 +55,25 @@ app = FastAPI(
     debug=DEBUG
 )
 
+# --- 세션 기록을 위한 임시 메모리 저장소 ---
+# (프로덕션에서는 Redis나 데이터베이스를 사용해야 함)
+SESSION_HISTORY: Dict[str, List[Dict[str, str]]] = {}
+
+def get_session_history(session_id: str) -> List:
+    """세션 ID를 기반으로 LangChain 메시지 객체 리스트 반환"""
+    history_dicts = SESSION_HISTORY.get(session_id, [])
+    messages = []
+    for item in history_dicts:
+        messages.append(HumanMessage(content=item["human"]))
+        messages.append(AIMessage(content=item["ai"]))
+    return messages
+
+def add_to_session_history(session_id: str, human_question: str, ai_answer: str):
+    """현재 질문과 답변을 세션 기록에 추가"""
+    if session_id not in SESSION_HISTORY:
+        SESSION_HISTORY[session_id] = []
+    SESSION_HISTORY[session_id].append({"human": human_question, "ai": ai_answer})
+
 rag_chain = None
 vectorstore = None
 
@@ -64,6 +88,8 @@ async def startup_event():
     try:
         vectorstore = get_persisted_vectorstore(
             host=os.getenv("CHROMA_HOST"), 
+            # 💡 [추가] CHROMA_PORT를 읽어서 정수형(int)으로 전달
+            port=int(os.getenv("CHROMA_PORT", "8000")),
             collection_name=COLLECTION_NAME,
         )
         print(f"✅ 벡터 저장소 로드 성공: 컬렉션 '{COLLECTION_NAME}'")
@@ -74,27 +100,48 @@ async def startup_event():
         print(f"❌ 벡터 저장소 초기화 중 예상치 못한 오류 발생: {e}")
         raise HTTPException(status_code=500, detail="RAG 시스템 초기화 실패.")
 
-    # 2. RAG 체인 로드
+    # 2. RAG 체인 로드 (수정된 함수 호출)
     try:
-        rag_chain = get_source_aware_rag_chain(vectorstore=vectorstore)
-        print("✅ RAG 체인 로드 성공")
+        # 함수 이름 변경
+        rag_chain = get_conversational_rag_chain(vectorstore=vectorstore) 
+        print("✅ 대화형 RAG 체인 로드 성공")
     except Exception as e:
-        print(f"❌ RAG 체인 생성 실패 (LLM/임베딩 오류 가능성): {e}")
+        print(f"❌ RAG 체인 생성 실패: {e}")
         raise HTTPException(status_code=500, detail="RAG 체인 로드 실패.")
         
     print("✅ RAG 컴포넌트 초기화 완료")
 
 
+# src/main.py
+
+# 👍 [최종 수정 코드] 👍
 @app.get("/health", summary="서버 및 DB 상태 확인")
 async def health_check():
     if vectorstore is None or rag_chain is None:
         raise HTTPException(status_code=503, detail="RAG 시스템이 초기화되지 않았습니다.")
         
-    # ChromaDB 연결 상태 재확인
     db_status = "OK"
     try:
-        # vectorstore.client.heartbeat() 대신 더 안전한 health check
-        vectorstore.client.count_collections() 
+        # 💡 [수정] 전역 vectorstore 객체 대신,
+        # Python 테스트가 성공한 것처럼 매번 새로운 임시 클라이언트를 생성하여
+        # 'heartbeat'를 확인합니다.
+        
+        # .env 파일에서 호스트 및 포트 정보 다시 읽기
+        temp_host = os.getenv("CHROMA_HOST", "localhost")
+        if temp_host == "vector_db":
+            temp_host = "localhost"
+        
+        temp_port = int(os.getenv("CHROMA_PORT", "8001")) # 8001이 기본값이 되도록 수정
+
+        # 새로운 임시 클라이언트 생성
+        temp_client = chromadb.HttpClient(
+            host=temp_host,
+            port=temp_port,
+            settings=Settings(anonymized_telemetry=False)
+        )
+        # 새 클라이언트로 'heartbeat' 실행
+        temp_client.heartbeat()
+
     except Exception:
         db_status = "DOWN"
 
@@ -113,14 +160,29 @@ async def ask_question(query: Question):
     print(f"\n[요청] 세션 ID: {query.session_id}, 질문: {query.question[:50]}...")
     
     try:
-        start_time = time.time() # 시간 측정 시작
+        start_time = time.time()
 
-        result: Dict[str, Any] = rag_chain.invoke({"question": query.question})
+        # 1. 세션 기록 가져오기
+        chat_history = get_session_history(query.session_id)
+
+        # 2. RAG 체인 호출 (입력 형식 변경)
+        invoke_input = {
+            "question": query.question,
+            "chat_history": chat_history
+        }
+        result: Dict[str, Any] = rag_chain.invoke(invoke_input)
         
         end_time = time.time()
         execution_time_ms = round((end_time - start_time) * 1000, 2)
         
-        # 출처 문서 정보 추출
+        # 3. 세션 기록에 현재 대화 추가
+        add_to_session_history(
+            session_id=query.session_id,
+            human_question=query.question,
+            ai_answer=result["answer"]
+        )
+        
+        # 출처 문서 정보 추출 (변경 없음)
         sources = []
         for doc in result.get("source_documents", []):
             sources.append({
@@ -135,10 +197,8 @@ async def ask_question(query: Question):
         )
 
     except Exception as e:
-        print(f"❌ RAG 체인 실행 중 오류 발생: {e}")
-        # LLM API 키 오류, 네트워크 오류 등 상세 에러를 숨기지 않고 반환
+        # ... (오류 처리는 변경 없음)
         raise HTTPException(status_code=500, detail=f"질문 처리 중 서버 오류가 발생했습니다: {e.__class__.__name__}")
-
 
 # --- 서버 실행 ---
 if __name__ == "__main__":

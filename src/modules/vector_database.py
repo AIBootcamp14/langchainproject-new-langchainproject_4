@@ -48,7 +48,7 @@ class VectorDatabaseClient:
             resolved_host = "localhost" # 로컬 환경에서 실행할 경우 'vector_db' 대신 'localhost' 사용
 
         self.host = resolved_host
-        self.port = port or int(os.getenv("CHROMA_PORT", "8000"))
+        self.port = port 
         self.collection_name = collection_name
 
         # 임베딩 모델 설정
@@ -128,6 +128,7 @@ class VectorDatabaseClient:
 # API 서버(main.py)에서 사용할 편의 함수
 def get_persisted_vectorstore(
     host: Optional[str] = None,
+    port: int = 8000,
     collection_name: str = "langchain_docs",
 ) -> Chroma:
     """
@@ -135,6 +136,7 @@ def get_persisted_vectorstore(
     """
     vdb_client = VectorDatabaseClient(
         host=host,
+        port=port,
         collection_name=collection_name
     )
 

@@ -31,48 +31,46 @@
 ### 1.1. 시스템 아키텍처 다이어그램
 
 ```mermaid
-flowchart TD
-    %% -------------------------------------
-    %% A. 데이터 준비 및 인덱싱 흐름 (Offline)
-    %% -------------------------------------
-    subgraph "1. Indexing Flow (Offline)"
-        direction LR
-        A[LangChain 문서] -->|크롤링/로드| B(DB 초기화 스크립트);
-        B -->|커스텀 청킹/임베딩| C(Solar Embedding);
-        C -->|벡터 저장| D((ChromaDB: 벡터 스토어));
-    end
+sequenceDiagram
+    participant 사용자
+    participant Streamlit
+    participant FastAPI
+    participant LCEL Box
+    participant ChromaDB
+    participant LLM as Solar-1-Mini
 
-    %% -------------------------------------
-    %% B. 사용자 질의 (Query) 및 응답 흐름 (Run-Time)
-    %% -------------------------------------
-    subgraph "2. Query Flow (Run-Time)"
-        direction TD
-        E[[사용자 Query]] -->|1. HTTP 요청| F(Streamlit UI: [http://8501](http://8501));
-        F -->|2. /ask/stream 호출| G{FastAPI Server: [http://8000](http://8000)};
+    %% 1. 사용자 -> Streamlit
+    autonumber
+    사용자 ->> Streamlit: Query (질문)
 
-        subgraph "LCEL Pipeline"
-            G -->|3. RAG 체인 실행| H[LangChain LCEL Chain];
-            H -->|4-1. 쿼리 임베딩| D;
-            D -->|4-2. 유사 문서 검색| H;
-            H -->|5. Prompt 구성| I((Solar-1-Mini: LLM));
-            I -->|6. 답변 생성 (Token)| H;
-        end
+    %% 2. Streamlit -> FastAPI
+    Streamlit ->> FastAPI: HTTP 요청
+    activate FastAPI
 
-        G -.->|7. Streaming Response (SSE)| F;
-        F -->|8. 실시간 출력| E;
-    end
+    %% 3. FastAPI -> LCEL Box (RAG 체인 실행)
+    FastAPI ->> LCEL Box: RAG 체인 실행
 
-    %% -------------------------------------
-    %% C. 스타일링 (Docker 컨테이너 강조)
-    %% -------------------------------------
-    style F fill:#e0f7fa,stroke:#00bcd4,stroke-width:2,stroke-dasharray: 5,5
-    style G fill:#e0f7fa,stroke:#00bcd4,stroke-width:2,stroke-dasharray: 5,5
-    style D fill:#e0f7fa,stroke:#00bcd4,stroke-width:2,stroke-dasharray: 5,5
+    %% 4. LCEL Box -> ChromaDB (벡터 검색)
+    LCEL Box ->> ChromaDB: 4-1. 벡터 검색 (Retrieval)
+    activate ChromaDB
+
+    %% 5. ChromaDB -> LCEL Box (Context 반환)
+    ChromaDB -->> LCEL Box: 4-2. Context 반환
+    deactivate ChromaDB
+
+    %% 6. LCEL Box -> LLM (Prompt + Context)
+    LCEL Box ->> LLM: 5. Prompt + Context
+
+    %% 7. LLM -> FastAPI (Token 스트리밍)
+    LLM -->> FastAPI: 6. Token 스트리밍
+
+    %% 8. FastAPI -> Streamlit (SSE 스트리밍 응답)
+    FastAPI -->> Streamlit: 7. SSE 스트리밍 응답
+    deactivate FastAPI
+
+    %% 9. Streamlit -> 사용자 (최종 답변 출력)
+    Streamlit ->> 사용자: 8. 최종 답변 출력
 ```
-
-
-
-
 
 
 

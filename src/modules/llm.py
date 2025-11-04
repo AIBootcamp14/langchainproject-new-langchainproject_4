@@ -13,8 +13,8 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.embeddings import Embeddings
 from langchain_upstage import ChatUpstage, UpstageEmbeddings
 
-# 프로젝트에서는 SOLAR_API_KEY를 환경 변수로 사용함.
-SOLAR_API_KEY_ENV_NAME ="UPSTAGE_API_KEY"
+# 프로젝트에서는 SOLAR_API_KEY를 환경 변수로 사용
+SOLAR_API_KEY_ENV_NAME = "UPSTAGE_API_KEY"
 
 
 def _check_api_key(api_key: Optional[str]) -> None:
@@ -38,16 +38,16 @@ def get_solar_llm(
     Upstage Solar LLM 인스턴스를 반환합니다.
 
     Args:
-        model: 사용할 모델명 ("solar-pro" 또는 "solar-1-mini-chat").
-        temperature: 생성 온도 값 (0.0 ~ 1.0).
-        max_tokens: 최대 토큰 수.
-        streaming: 스트리밍 모드 여부.
+        model: 사용할 모델명 ("solar-pro" 또는 "solar-1-mini-chat")
+        temperature: 생성 온도 값 (0.0 ~ 1.0)
+        max_tokens: 최대 토큰 수
+        streaming: 스트리밍 모드 여부
 
     Returns:
-        ChatUpstage 인스턴스.
+        ChatUpstage 인스턴스
 
     Raises:
-        ValueError: API 키가 설정되지 않은 경우.
+        ValueError: API 키가 설정되지 않은 경우
     """
     api_key = os.getenv(SOLAR_API_KEY_ENV_NAME)
     _check_api_key(api_key)
@@ -124,11 +124,13 @@ if __name__ == "__main__":
     load_dotenv()
     
     print("=== LLM 모듈 테스트 시작 ===\n")
-    test_connection()
+    # test_connection을 두 번 호출할 필요는 없으니 제거
+    test_connection() 
 
     # 테스트 성공 시 추가 응답 테스트
     if test_connection():
-        llm = get_llm()
+        # get_llm() 대신 정확한 함수명 get_solar_llm() 사용하도록 수정
+        llm = get_solar_llm() 
         response = llm.invoke("LangChain이 무엇인지 한 문장으로 설명해주세요.")
         print(f"\n=== LLM 응답 테스트:")
         print(f"응답: {response.content}")

@@ -1,133 +1,169 @@
 # initialize_vector_db.py
 
 """
-Vector DB 초기화 스크립트 (최종)
-LangChain 문서를 수집하고 구조 기반 청킹 후 ChromaDB Vector DB에 적재합니다.
+전체 데이터 수집 및 벡터 데이터베이스 초기화 스크립트.
 """
 
 import os
-import sys
-from pathlib import Path
+import argparse 
 import time
+from typing import List, Dict, Any, Optional, Final
 
-
-# 🌟 경로 추가 및 디버깅 코드 시작 🌟
-current_dir = str(Path(__file__).parent)
-sys.path.append(current_dir) # <--- 이 부분이 경로를 추가하는 핵심이야.
-
-print("="*30)
-print(f"현재 스크립트 경로: {current_dir}")
-
-is_src_exist = Path(current_dir, "src").is_dir()
-print(f"폴더 안에 'src' 폴더 존재 여부: {is_src_exist}")
-
-print("sys.path에 추가된 경로들:")
-for p in sys.path:
-    if "lang" in p: # 프로젝트 폴더 이름으로 필터링
-        print(f"  -> {p}")
-print("="*30)
-# 🌟 경로 추가 및 디버깅 코드 끝 🌟
-
+# 써드파티 라이브러리
 from dotenv import load_dotenv
-from typing import List
-
 from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter, Language
+from langchain_community.vectorstores import Chroma
 
-# 로컬 모듈 임포트
-# 팀원 4와 팀원 1이 완성한 실제 모듈 사용
+# 프로젝트 모듈
 from src.utils.data_collector import DataCollector
-from src.utils.chunking_strategy import StructuredTextSplitter
+from src.utils.utils import ensure_directory, generate_document_hash
+from src.utils.chunking_strategy import CodeBlockPreservingSplitter
 from src.modules.vector_database import VectorDatabaseClient
-
-# 환경 변수 로드 (API 키 및 DB 설정)
-load_dotenv() 
-
-# --- 설정 값 ---
-# 환경 변수가 없으면 기본값 사용
-COLLECTION_NAME: str = os.getenv("CHROMA_COLLECTION_NAME", "langchain_docs")
-MAX_PAGES_TO_CRAWL: int = None # 10에서 품질 높이기 위해 None로 수정
-CRAWL_DELAY_SECONDS: float = 1.0
-RESET_DB: bool = True # DB를 새로 만들지 여부 (테스트 시 True 권장)
+from src.modules.llm import get_embeddings
 
 
-def run_data_ingestion() -> None:
-    """전체 데이터 적재 파이프라인 실행"""
-    start_time = time.time()
+# --- 설정 및 상수 ---
+# PEP 8: 모듈 수준 상수는 대문자로
+SOURCE_DATA_DIR: Final[str] = "data/source_documents"
+EMBEDDING_MODEL_NAME: Final[str] = "solar-embedding-1-large"
+COLLECTION_NAME: Final[str] = "langchain_docs"
+
+# --------------------
+
+
+def initialize_db(
+    documents: List[Document], 
+    reset_db: bool = False
+) -> None:
+    """
+    수집된 문서를 청킹하고 벡터 데이터베이스에 적재한다.
+    
+    Args:
+        documents: 크롤링된 Document 객체 리스트
+        reset_db: 기존 DB를 삭제하고 새로 생성할지 여부
+    
+    Raises:
+        ConnectionError: ChromaDB 서버 연결 실패 시
+    """
     
     print("=" * 60)
-    print(f"🚀 RAG 데이터 적재 파이프라인 시작 (컬렉션: {COLLECTION_NAME})")
+    print(f"2. 벡터 데이터베이스 초기화 및 적재 시작 (Reset: {reset_db})")
     print("=" * 60)
     
-    # 1. 문서 수집 (DataCollector 사용)
-    print("\n[단계 1/4] LangChain 문서 수집 시작...")
-    collector = DataCollector()
-    
-    # DataCollector 내부의 get_all_urls 사용
-    urls_to_crawl = collector.get_all_urls() 
-    
-    raw_documents: List[Document] = collector.collect_documents(
-        urls=urls_to_crawl,
-        max_pages=MAX_PAGES_TO_CRAWL,
-        delay=CRAWL_DELAY_SECONDS,
+    # 1. DB 클라이언트 초기화 및 연결
+    vdb_client: VectorDatabaseClient = VectorDatabaseClient(
+        collection_name=COLLECTION_NAME,
+        embedding_model=EMBEDDING_MODEL_NAME
     )
     
-    if not raw_documents:
-        print("🛑 수집된 문서가 없습니다. 크롤링 URL 또는 웹 서버 상태를 점검하세요.")
-        return
-        
-    print(f"✅ 문서 수집 완료: 총 {len(raw_documents)}개 문서")
-    
-    
-    # 2. 구조 기반 텍스트 분할 (StructuredTextSplitter 사용)
-    print("\n[단계 2/4] 구조 기반 텍스트 분할 및 청킹 시작...")
-    # 팀원 1의 고급 분할기 사용 (코드 블록 보존)
-    text_splitter = StructuredTextSplitter(
-        chunk_size=1500,
-        chunk_overlap=200,
-        preserve_code_blocks=True,
-    )
-    
-    chunks: List[Document] = text_splitter.split_documents(raw_documents)
-    
-    if not chunks:
-        print("🛑 분할된 청크가 없습니다. 분할 로직을 점검하세요.")
-        return
-        
-    print(f"✅ 문서 분할 완료: 총 {len(chunks)}개 청크 생성")
-
-
-    # 3. 벡터 데이터베이스 클라이언트 초기화 및 연결 확인
-    print("\n[단계 3/4] ChromaDB 연결 및 임베딩 모델 초기화...")
-    vdb_client = VectorDatabaseClient(collection_name=COLLECTION_NAME)
-    
+    # ChromaDB 연결 확인
     if not vdb_client.health_check():
-        print("🛑 ChromaDB 서버 연결 실패. Docker Compose가 실행 중인지 확인하세요.")
+        # 구체적인 에러 타입 사용
+        raise ConnectionError("ChromaDB 서버에 연결할 수 없습니다. 스크립트를 중단합니다.")
+
+    # 벡터 저장소 초기화 (reset 인자 전달)
+    vectorstore: Chroma = vdb_client.init_vectorstore(reset=reset_db)
+
+    if not documents:
+        print("경고: 적재할 문서가 없습니다. DB 초기화만 완료되었습니다.")
         return
+
+    # 2. 문서 분할 (Chunking)
+    print(f"총 {len(documents)}개 문서 분할 시작 (Custom Splitter 사용)")
+
+    # CodeBlockPreservingSplitter 사용
+    text_splitter: RecursiveCharacterTextSplitter = CodeBlockPreservingSplitter(
+        chunk_size=1500, 
+        chunk_overlap=200, 
+    )
+
+    chunks: List[Document] = text_splitter.split_documents(documents)
+    print(f"✅ 문서 분할 완료. 총 {len(chunks)}개 청크 생성됨.")
+
+    # 3. 문서 해시 생성 및 메타데이터 추가
+    for chunk in chunks:
+        # 청크 레벨에서 고유 해시 생성
+        chunk.metadata["chunk_hash"] = generate_document_hash(
+            chunk.page_content, 
+            chunk.metadata.get("url")
+        )
+
+    # 4. 벡터 DB에 청크 적재
+    print(f"총 {len(chunks)}개 청크를 벡터 DB에 적재 중...")
     
-    # reset 설정에 따라 기존 데이터 삭제 후 초기화
-    vectorstore = vdb_client.init_vectorstore(reset=RESET_DB)
-    print(f"✅ 벡터 저장소 초기화 완료 (컬렉션: {COLLECTION_NAME})")
+    start_time = time.time()
+    ids: List[str] = vectorstore.add_documents(chunks)
+    end_time = time.time()
+    
+    print(f"✅ 적재 완료! (총 {len(ids)}개 문서 적재, 소요 시간: {end_time - start_time:.2f}초)")
 
 
-    # 4. 벡터 저장소에 청크 적재
-    print(f"\n[단계 4/4] {len(chunks)}개 청크를 벡터 저장소에 적재 시작...")
+def parse_arguments() -> argparse.Namespace:
+    """명령줄 인자를 파싱한다. (PEP 484)"""
+    parser = argparse.ArgumentParser(
+        description="LangChain 문서를 크롤링하고 벡터 데이터베이스(ChromaDB)를 초기화합니다."
+    )
+    # --reset 인자 추가 (True/False 플래그)
+    parser.add_argument(
+        "--reset",
+        action="store_true", 
+        help="기존 ChromaDB 컬렉션을 삭제하고 새로 만듭니다."
+    )
+    # --max-pages 인자 추가 (정수)
+    parser.add_argument(
+        "--max-pages",
+        type=int,
+        default=100,
+        help="크롤링할 최대 페이지 수 (개발/테스트 용). 0 또는 None이면 전체 크롤링."
+    )
+    
+    return parser.parse_args()
+
+
+def main():
+    """스크립트 메인 실행 함수"""
+    # 환경 변수 로드
+    load_dotenv()
+    
+    # 1. 인자 파싱 (CLI Arguments)
+    args: argparse.Namespace = parse_arguments()
+    reset_db: bool = args.reset
+    # max_pages가 0보다 클 때만 사용하고, 0이면 None 처리하여 DataCollector가 전체를 수집하도록 유도
+    max_pages: Optional[int] = args.max_pages if args.max_pages > 0 else None 
+    
+    print("=" * 60)
+    print("1. 데이터 수집 시작")
+    print(f"   - DB 초기화 여부 (--reset): {reset_db}")
+    print(f"   - 최대 페이지 수 (--max-pages): {max_pages if max_pages is not None else '전체'}")
+    print("=" * 60)
     
     try:
-        # ChromaDB에 Document 리스트를 직접 추가 (자동으로 임베딩 및 저장 수행)
-        vectorstore.add_documents(documents=chunks)
+        # 2. 크롤링 및 문서 수집
+        collector: DataCollector = DataCollector()
+        documents: List[Document] = collector.collect_documents(
+            max_pages=max_pages, 
+            delay=0.5
+        )
         
-        # 적재 후 최종 문서 수 확인
-        final_count = vectorstore._collection.count()
-        print(f"🎉 모든 청크 적재 완료! (총 {final_count}개 청크)")
+        if not documents:
+             print("경고: 수집된 문서가 없어 적재 단계를 건너뜁니다.")
         
+        # 3. DB 초기화 및 적재
+        initialize_db(documents=documents, reset_db=reset_db)
+
+    except ConnectionError as e:
+        print(f"\n❌ [치명적 오류 - 연결 실패]: {e}")
+        print("ChromaDB 서버(Docker 컨테이너)가 실행 중인지 확인해주세요.")
+    except ValueError as e:
+        # API 키가 없는 경우 등
+        print(f"\n❌ [치명적 오류 - 설정 실패]: {e}")
     except Exception as e:
-        print(f"❌ 데이터 적재 중 치명적인 오류 발생: {e}")
-        
-    execution_time = time.time() - start_time
-    print("\n" + "=" * 60)
-    print(f"✅ 파이프라인 완료! 총 실행 시간: {execution_time:.2f}초")
-    print("=" * 60)
+        # 기타 예상치 못한 오류
+        print(f"\n❌ [예상치 못한 오류]: {e.__class__.__name__} - {e}")
+    finally:
+        print("\n=== 데이터베이스 초기화 및 적재 스크립트 종료 ===")
 
 
 if __name__ == "__main__":
-    run_data_ingestion()
+    main()

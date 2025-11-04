@@ -35,39 +35,39 @@ flowchart TD
     %% -------------------------------------
     %% A. 데이터 준비 및 인덱싱 흐름 (Offline)
     %% -------------------------------------
-    subgraph Indexing Flow
+    subgraph "1. Indexing Flow (Offline)"
         direction LR
-        DOC([LangChain 문서]) -->|A. 크롤링/로드| INIT(DB 초기화 스크립트)
-        INIT -->|B. 커스텀 청킹/임베딩| EMB(Solar Embedding)
-        EMB -->|C. 벡터 저장| VDB((ChromaDB: 벡터 스토어))
+        A[LangChain 문서] -->|크롤링/로드| B(DB 초기화 스크립트);
+        B -->|커스텀 청킹/임베딩| C(Solar Embedding);
+        C -->|벡터 저장| D((ChromaDB: 벡터 스토어));
     end
 
     %% -------------------------------------
     %% B. 사용자 질의 (Query) 및 응답 흐름 (Run-Time)
     %% -------------------------------------
-    subgraph Query Flow
+    subgraph "2. Query Flow (Run-Time)"
         direction TD
-        SUB[[사용자 Query]] -->|1. HTTP 요청| STR(Streamlit UI: [http://8501](http://8501))
-        STR -->|2. /ask/stream 호출| API{FastAPI Server: [http://8000](http://8000)}
+        E[[사용자 Query]] -->|1. HTTP 요청| F(Streamlit UI: [http://8501](http://8501));
+        F -->|2. /ask/stream 호출| G{FastAPI Server: [http://8000](http://8000)};
 
-        subgraph LCEL Pipeline
-            API -->|3. RAG 체인 실행| LCEL[LangChain LCEL Chain]
-            LCEL -->|4-1. 쿼리 임베딩| VDB
-            VDB -->|4-2. 유사 문서 검색| LCEL
-            LCEL -->|5. Prompt 구성| LLM((Solar-1-Mini: LLM))
-            LLM -->|6. 답변 생성 (Token)| LCEL
+        subgraph "LCEL Pipeline"
+            G -->|3. RAG 체인 실행| H[LangChain LCEL Chain];
+            H -->|4-1. 쿼리 임베딩| D;
+            D -->|4-2. 유사 문서 검색| H;
+            H -->|5. Prompt 구성| I((Solar-1-Mini: LLM));
+            I -->|6. 답변 생성 (Token)| H;
         end
 
-        API -.->|7. Streaming Response (SSE)| STR
-        STR -->|8. 실시간 출력| SUB
+        G -.->|7. Streaming Response (SSE)| F;
+        F -->|8. 실시간 출력| E;
     end
 
     %% -------------------------------------
     %% C. 스타일링 (Docker 컨테이너 강조)
     %% -------------------------------------
-    style STR fill:#e0f7fa,stroke:#00bcd4,stroke-width:2,stroke-dasharray: 5,5
-    style API fill:#e0f7fa,stroke:#00bcd4,stroke-width:2,stroke-dasharray: 5,5
-    style VDB fill:#e0f7fa,stroke:#00bcd4,stroke-width:2,stroke-dasharray: 5,5
+    style F fill:#e0f7fa,stroke:#00bcd4,stroke-width:2,stroke-dasharray: 5,5
+    style G fill:#e0f7fa,stroke:#00bcd4,stroke-width:2,stroke-dasharray: 5,5
+    style D fill:#e0f7fa,stroke:#00bcd4,stroke-width:2,stroke-dasharray: 5,5
 ```
 
 

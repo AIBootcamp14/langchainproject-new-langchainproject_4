@@ -1,9 +1,14 @@
 # 기술 문서 기반 RAG 챗봇 구축 프로젝트
-# data scraping 하고 vector 데이터베이스 구축 한 파일 추가함 
-- results_all.json은 langchin 기술 문서에서 스크래핑한 데이터임.
+# data scraping 하고 vector 데이터베이스 구축한 파일 추가함 
+- unique_meta.json은 langchin 기술 문서에서 스크래핑한 데이터임
 <!-- - langchain_docs.json 은 langchin 기술 문서에서 스크래핑 한 데이터임.-->
-- faiss_langchain_db2는 스크래핑한 데이터로 생성한 벡터 데이터베이스 임.
-- 작업 했던 코드는 vectorDB.ipynb
+- faiss_langchain_db_meta_v2는 스크래핑한 데이터로 생성한 벡터 데이터베이스 임
+- 해당 데이터의 URL, 헤드 메뉴 이름, 사이드 메뉴 이름 등의 메타데이터 추가함
+- 저장된 최신 벡터 데이터베이스 로드하고 검색해 볼 수 있는 코드는 vectorDB_load.ipynb
+- 벡터 데이터베이스 저장했던 코드는 vectorDB.ipynb
+
+##사용 방법: 
+- vectorDB_load.ipynb 파일 열어서 실행
 
 역할분담 세부화
 

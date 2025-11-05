@@ -2,78 +2,57 @@ version: '3.8'
 
 services:
 
-  # 1. 벡터 데이터베이스 서비스 (ChromaDB)
   chromadb:
-    image: chromadb/chroma:latest
+    # 💡 [버전 유지]: 0.4.24 버전 사용
+    image: chromadb/chroma:0.4.24 
     container_name: chroma-server
-    ports:
-      - "8001:8000" # ChromaDB의 기본 포트는 8000이지만, Docker Compose 외부에서 8001로 접근하도록 설정
+    ports: 
+      - "8001:8000"
     volumes:
       - chroma_data:/app/chroma/chroma
     environment:
-      # 로컬 개발 환경용 설정 (프로덕션에서는 더 견고한 설정 필요)
       - IS_PERSISTENT=TRUE 
-      - ALLOW_RESET=TRUE
-    
-    # 💡 [핵심 추가]: ChromaDB 헬스 체크 로직 추가
-    healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8000/api/v1/heartbeat || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s # ChromaDB가 초기화될 시간을 줌
+      # CHROMA_API_IMPL, CHROMA_API_PORT, ALLOW_RESET 등 최신 변수는 모두 삭제
 
-  # 2. RAG 백엔드 API 서비스 (FastAPI)
   fastapi-api:
     build: 
       context: .
       dockerfile: Dockerfile
-    container_name: fastapi-rag-api
+    container_name: fastapi-rag-api 
     ports:
       - "8000:8000"
     environment:
-      # API 환경 변수 설정
       - UPSTAGE_API_KEY=${UPSTAGE_API_KEY}
-      # ChromaDB 연결 주소 (Docker 네트워크 이름)
       - CHROMA_HOST=chromadb 
       - CHROMA_PORT=8000
+      - CHROMA_API_IMPL=rest 
     depends_on:
-      # FastAPI는 ChromaDB가 준비된 후에 시작
       chromadb:
-        condition: service_healthy # 헬스 체크가 성공해야만 시작
+        condition: service_started 
     
-    # 💡 [핵심 수정]: start_api.py를 실행하도록 명령어 변경
-    command: python start_api.py 
+    command: ["sh", "-c", "sleep 5 && uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 1"] 
 
-    # 💡 [핵심 추가]: FastAPI 헬스 체크 로직 추가
     healthcheck:
-      # FastAPI의 /health 엔드포인트가 'ready' 상태를 반환하는지 확인
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 15s
       timeout: 5s
       retries: 3
       start_period: 10s
-      
-  # 3. Streamlit 프론트엔드 UI 서비스
+    
   streamlit-ui:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: streamlit-rag-ui
     ports:
-      - "8501:8501" # Streamlit 기본 포트
+      - "8501:8501"
     environment:
-      # Streamlit에서 FastAPI로 접속할 주소 설정 (Docker 네트워크 이름)
-      # Streamlit에서 FastAPI를 호출할 때 Docker 네트워크 내부 주소 사용
-      - FASTAPI_URL=http://fastapi-api:8000 
+      - FASTAPI_URL=http://fastapi-rag-api:8000 
     depends_on:
-      # Streamlit은 FastAPI가 준비되고 RAG 파이프라인이 초기화된 후에 시작
       fastapi-api:
-        condition: service_healthy
+        condition: service_started
         
-    # 💡 [핵심 수정]: Streamlit 실행 명령어만 명확하게 분리
     command: streamlit run src/streamlit_app.py --server.port 8501 --server.address 0.0.0.0
 
-# Docker 볼륨 정의
 volumes:
   chroma_data:

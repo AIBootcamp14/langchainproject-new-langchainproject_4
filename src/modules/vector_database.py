@@ -1,26 +1,21 @@
-# src/modules/vector_database.py
-
 """
 벡터 데이터베이스(ChromaDB) 연결 및 관리 클래스
+(환경 변수를 모듈 로드 시점이 아닌, 인스턴스 생성 시점에 동적으로 로드하도록 수정)
 """
 
+from typing import Any, Final
 import os
-from typing import List, Final
+from typing import List
 
 # 써드파티 라이브러리
 from langchain_community.vectorstores import Chroma
 from langchain_core.embeddings import Embeddings
 from langchain_core.documents import Document
+from chromadb import HttpClient 
 
-# 프로젝트 모듈
-from src.modules.llm import get_embeddings
-
-
-# --- 설정 및 상수 (PEP 8 준수) ---
-# ChromaDB의 연결 주소는 Docker 환경 변수 CHROMA_HOST를 사용하거나 로컬 기본값 사용
-CHROMA_HOST: Final[str] = os.getenv("CHROMA_HOST", "localhost") 
-CHROMA_PORT: Final[int] = int(os.getenv("CHROMA_PORT", "8000")) 
-CHROMA_URL: Final[str] = f"http://{CHROMA_HOST}:{CHROMA_PORT}"
+# ❌ [제거]: 모듈 수준의 상수를 제거하고, 클래스 내부에서 동적으로 읽도록 함
+# CHROMA_HOST: Final[str] = os.getenv("CHROMA_HOST", "localhost") 
+# CHROMA_PORT: Final[int] = int(os.getenv("CHROMA_PORT", "8000")) 
 
 
 class VectorDatabaseClient:
@@ -39,7 +34,14 @@ class VectorDatabaseClient:
         self.collection_name = collection_name
         self.embedding_model_name = embedding_model
         
-        # 💡 get_embeddings 함수를 사용하여 Embeddings 인스턴스 초기화
+        # 💡 [핵심 수정]: 인스턴스가 생성되는 시점(initialize_db 호출 후)에 환경 변수를 동적으로 읽음
+        # initialize_db에서 설정한 '8001' 포트가 여기서 정확하게 반영됨
+        self.chroma_host: str = os.getenv("CHROMA_HOST", "localhost")
+        self.chroma_port: int = int(os.getenv("CHROMA_PORT", "8000")) 
+        self.chroma_url: str = f"http://{self.chroma_host}:{self.chroma_port}"
+        
+        # get_embeddings 함수를 사용하여 Embeddings 인스턴스 초기화
+        from src.modules.llm import get_embeddings
         self.embeddings: Embeddings = get_embeddings(model=embedding_model)
 
     def health_check(self) -> bool:
@@ -47,65 +49,53 @@ class VectorDatabaseClient:
         ChromaDB 서버 연결 상태를 확인한다.
         """
         try:
-            # ChromaDB 연결 시도 (Collection이 아닌 Client 레벨에서 테스트)
-            # 여기서는 ChromaDB HTTP 연결을 시도하는 간접적인 방법을 사용
-            from chromadb import HttpClient # 임포트 위치를 함수 내로 변경하여 지연 로딩
-            client = HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
+            # 구버전 호환을 위해 tenant, database 인수 제거
+            client = HttpClient(
+                host=self.chroma_host, # 인스턴스 변수 사용
+                port=self.chroma_port, # 인스턴스 변수 사용
+            )
             client.heartbeat() # 하트비트 호출로 연결 확인
             return True
-        except Exception:
+        except Exception as e: 
+            # ❌ [디버그 코드 유지]: 연결 실패 시 오류 출력
+            print(f"DEBUG_CHROMA_ERROR: ChromaDB 연결 실패 ({self.chroma_host}:{self.chroma_port}) - {type(e).__name__}: {e}")
             return False
 
     def init_vectorstore(self, reset: bool = False) -> Chroma:
         """
         ChromaDB 클라이언트와 컬렉션을 초기화하고 LangChain Vectorstore 객체를 반환한다.
-
-        Args:
-            reset: True면 기존 컬렉션을 삭제하고 새로 생성한다.
-
-        Returns:
-            LangChain Chroma Vectorstore 인스턴스.
         """
-        # LangChain Chroma Vectorstore는 내부적으로 HttpClient를 사용하여 연결
-        vectorstore = Chroma(
-            collection_name=self.collection_name,
-            embedding_function=self.embeddings,
-            persist_directory=None, # HTTP 모드 사용 시 persist_directory는 None
-            url=CHROMA_URL,
+        # 구버전 호환을 위해 tenant, database 인수 제거
+        chroma_client = HttpClient(
+            host=self.chroma_host, # 인스턴스 변수 사용
+            port=self.chroma_port, # 인스턴스 변수 사용
         )
 
         if reset:
             print(f"경고: 기존 컬렉션 '{self.collection_name}'을 삭제하고 새로 만듭니다.")
-            # 컬렉션을 삭제하는 로직은 LangChain Chroma 객체를 통해 직접 접근하기 어려우므로,
-            # 내부적으로 사용하는 client를 통해 접근하거나, 초기화 스크립트에서 관리함.
-            # 여기서는 LangChain의 Chroma 기능을 사용하여 컬렉션이 없으면 새로 생성되도록 처리하고
-            # reset_db 로직은 initialize_vector_db.py의 논리를 유지한다.
-            # (LangChain Chroma는 collection_name이 없으면 새로 생성)
             
-            # 실제 삭제 로직을 실행하는 것이 명확하지만, 현재 LangChain_community의 Chroma 구현에 의존함.
-            # 가장 확실한 방법은 ChromaDB의 Python Client를 사용하는 것이지만, 
-            # 여기서는 초기화 스크립트에서 전체 리셋(reset)을 담당하는 것으로 가정한다.
-            
-            # 💡 [추가]: 명시적인 컬렉션 리셋 로직을 추가하여 안정성 확보 (LangChain Chroma 대신 Client 사용)
+            # 명시적인 컬렉션 리셋 로직을 사용
             try:
-                from chromadb import HttpClient
-                client = HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
-                # 컬렉션 삭제 후 재생성 (Reset 로직 강화)
-                client.delete_collection(self.collection_name)
-                # 재생성 (LangChain이 다시 만들도록 유도)
+                chroma_client.delete_collection(self.collection_name)
                 print(f"✅ 컬렉션 '{self.collection_name}' 리셋 완료.")
             except Exception as e:
-                # 컬렉션이 없어서 삭제에 실패하는 경우는 정상
                 print(f"컬렉션 삭제 시도 중 오류 발생 (무시 가능): {e}")
-
-        # 리셋 후 새로 생성된 (혹은 기존) Vectorstore 반환
+                
+        # LangChain Chroma Vectorstore를 명시적으로 생성한 클라이언트와 함께 초기화
+        vectorstore = Chroma(
+            collection_name=self.collection_name,
+            embedding_function=self.embeddings,
+            client=chroma_client,
+            client_settings={"chroma_api_impl": "rest"}
+        )
+        
         return vectorstore
 
-    def get_retriever(self, k: int = 5) -> Any: # Any 대신 Retriever 타입을 써야 하지만 임포트가 복잡하여 Any 사용
+    def get_retriever(self, k: int = 5) -> Any: 
         """
         설정된 Vectorstore를 기반으로 Retriever 객체를 반환한다.
         """
-        vectorstore = self.init_vectorstore(reset=False) # 기존 컬렉션을 사용
+        vectorstore = self.init_vectorstore(reset=False)
         
         # 유사도 검색(Similarity Search) 기반의 Retriever 반환
         return vectorstore.as_retriever(
@@ -120,10 +110,13 @@ if __name__ == "__main__":
     print("VectorDatabaseClient 모듈 테스트 시작")
     print("=" * 50)
     
-    # 💡 get_embeddings가 환경 변수를 사용하므로 dotenv 로드가 필요함
     from dotenv import load_dotenv
     load_dotenv() 
 
+    # 💡 [수정]: 테스트 환경에 맞춰 8001 포트 사용 강제
+    os.environ["CHROMA_HOST"] = "localhost"
+    os.environ["CHROMA_PORT"] = "8001"
+    
     # 테스트 클라이언트 초기화
     test_client = VectorDatabaseClient(
         collection_name="test_collection",
@@ -132,16 +125,20 @@ if __name__ == "__main__":
 
     # 1. 헬스 체크
     if test_client.health_check():
-        print(f"✅ ChromaDB 연결 성공 (URL: {CHROMA_URL})")
+        print(f"✅ ChromaDB 연결 성공 (URL: {test_client.chroma_url})")
         
         # 2. 컬렉션 초기화 및 리셋 테스트
         print("\n컬렉션 리셋 테스트 시작...")
-        test_client.init_vectorstore(reset=True) # 리셋 후 새로 생성
-        print("✅ 컬렉션 리셋 및 초기화 성공")
-        
-        # 3. Retriever 테스트
-        retriever = test_client.get_retriever(k=3)
-        print(f"✅ Retriever 생성 성공 (타입: {type(retriever)})")
+        try:
+            test_client.init_vectorstore(reset=True)
+            print("✅ 컬렉션 리셋 및 초기화 성공")
+            
+            # 3. Retriever 테스트
+            retriever = test_client.get_retriever(k=3)
+            print(f"✅ Retriever 생성 성공 (타입: {type(retriever)})")
 
+        except Exception as e:
+            print(f"❌ 초기화 및 Retriever 테스트 실패: {e}")
+            
     else:
-        print(f"❌ ChromaDB 연결 실패. URL: {CHROMA_URL} 서버가 실행 중인지 확인하세요.")
+        print(f"❌ ChromaDB 연결 실패. URL: {test_client.chroma_url} 서버가 실행 중인지 확인하세요.")

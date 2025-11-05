@@ -1,23 +1,21 @@
-# src/main.py
-
 """
 FastAPI 애플리케이션 정의 및 RAG API 엔드포인트
 """
 
 import os
 import time
-import json # 💡 [추가]: 메타데이터 JSON 처리를 위해
+import json 
 from typing import Dict, Any, Optional, List
 
 # 써드파티 라이브러리
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request 
 from pydantic import BaseModel, Field
-from starlette.responses import StreamingResponse # 💡 [추가]: 스트리밍을 위한 임포트
+from starlette.responses import StreamingResponse 
 
 # 프로젝트 모듈
 from src.modules.retriever import RAGRetriever 
-from src.modules.vector_database import VectorDatabaseClient # 타입 힌트를 위해 임포트
+from src.modules.vector_database import VectorDatabaseClient 
 
 # 환경 변수 미리 로드
 load_dotenv()
@@ -43,40 +41,62 @@ app = FastAPI(
 # RAG Retriever 인스턴스를 저장할 변수 (초기화는 startup에서 진행)
 rag_retriever: Optional[RAGRetriever] = None 
 
+# 💡 [새로 추가된 상수]: 재시도 설정
+MAX_RETRIES = 10
+RETRY_DELAY_SECONDS = 3
+
 
 @app.on_event("startup")
 async def startup_event():
     """
     FastAPI 서버 시작 시 RAGRetriever를 초기화하고 종속성을 확인합니다.
+    ChromaDB 연결에 성공할 때까지 재시도합니다.
     """
     global rag_retriever
-    print("\n--- FastAPI Startup: RAG 파이프라인 초기화 중 ---")
+    print("\n--- FastAPI Startup: RAG 파이프라인 초기화 중 (ChromaDB 재시도 포함) ---")
     
-    # 💡 [개선]: ChromaDB 헬스 체크를 위한 클라이언트를 먼저 초기화
-    vdb_client_check = VectorDatabaseClient(
-        collection_name="langchain_docs", # 컬렉션 이름은 중요하지 않음
-        embedding_model="solar-embedding-1-large"
-    )
-    
-    # ChromaDB 연결 테스트
-    if not vdb_client_check.health_check():
-         print("❌ 경고: ChromaDB 연결 실패. RAG 초기화를 건너뜁니다.")
-         return
-    else:
-         print("✅ ChromaDB 연결 확인 성공")
-         
-    try:
-        # RAGRetriever 초기화 (LLM, 임베딩, DB 연결)
-        rag_retriever = RAGRetriever()
-        print("✅ RAGRetriever 초기화 성공")
+    # 💡 [핵심 수정]: ChromaDB 연결을 위한 재시도 로직 추가
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            # ChromaDB 헬스 체크를 위한 클라이언트를 초기화 (연결 실패 시 여기서 예외 발생 가능)
+            vdb_client_check = VectorDatabaseClient(
+                collection_name="langchain_docs",
+                embedding_model="solar-embedding-1-large"
+            )
+            
+            # ChromaDB 연결 테스트
+            if vdb_client_check.health_check():
+                print(f"✅ ChromaDB 연결 확인 성공 (시도 {attempt}회)")
+                break  # 연결 성공, 루프 탈출
+            else:
+                # health_check가 False를 반환할 경우 재시도
+                raise Exception("ChromaDB health check returned False.")
 
-    except ValueError as e:
-        # API 키 오류 등 치명적 오류 처리
-        print(f"❌ 치명적 오류: RAG 초기화 실패 - {e}")
-        rag_retriever = None 
-    except Exception as e:
-        print(f"❌ 예상치 못한 오류로 RAG 초기화 실패: {e}")
-        rag_retriever = None
+        except Exception as e:
+            # 연결 실패 (ChromaDB가 아직 준비되지 않은 경우)
+            print(f"⚠️ ChromaDB 연결 시도 실패 (시도 {attempt}/{MAX_RETRIES}회): {type(e).__name__}. {e}")
+            
+            if attempt == MAX_RETRIES:
+                print("❌ 치명적 오류: ChromaDB 연결 최대 재시도 횟수 초과. RAG 초기화를 건너뜁니다.")
+                return # 최종 실패 시 리턴
+            
+            print(f"⏳ {RETRY_DELAY_SECONDS}초 후 재시도...")
+            time.sleep(RETRY_DELAY_SECONDS)
+    
+    # 재시도 루프를 성공적으로 통과했을 경우에만 RAGRetriever 초기화
+    if attempt <= MAX_RETRIES:
+        try:
+            # RAGRetriever 초기화 (LLM, 임베딩, DB 연결)
+            rag_retriever = RAGRetriever()
+            print("✅ RAGRetriever 초기화 성공")
+
+        except ValueError as e:
+            # API 키 오류 등 치명적 오류 처리
+            print(f"❌ 치명적 오류: RAG 초기화 실패 - {e}")
+            rag_retriever = None 
+        except Exception as e:
+            print(f"❌ 예상치 못한 오류로 RAG 초기화 실패: {e}")
+            rag_retriever = None
 
 
 @app.get("/health", response_model=Dict[str, str])

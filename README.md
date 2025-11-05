@@ -1,27 +1,30 @@
 코딩 표준 (PEP 8, 20, 484)	모든 스타일 코드는 PEP 8(스타일) , PEP 20(철학) , PEP 484(스타일) 준수
 자동 포맷팅 도구(예: Black, isort)를 프로젝트에 삽입해서 코딩 스타일을 미리 방지
 
-|팀장|팀원|팀원|팀원|
+|팀장|팀원2|팀원3|팀원4, 팀원5|
 | :---: | :---: | :---: | :---: |
-|김영|이준영|김광묵|김시진,김동준|
+|김영|이준영|김광묵|김시진, 김동준|
 |구성 및 MLOps|RAG 로직 개발|행동 및 평가|데이터 엔지니어링, Vector DB 구축 및 관리|
 
 <br>
 
-|역할|세부사항|
+||역할|세부사항|
+| --- | --- | --- |
+| 팀장 | 애플리케이션 & MLOps | API 설계, Docker, 클라우드 배포 |
+| 팀원 2 | RAG 로직 개발 | LangChain/LlamaIndex 체인 설계, 검색 최적화 |
+| 팀원 3 | 프롬프트 및 평가 | 환각 방지, 성능 지표(Relevance, Faithfulness) 측정 |
+| 팀원 4 | 데이터 엔지니어링 | 문서 수집, 기술 문서 Chunking 전략 수립 |
+| 팀원 5 | 벡터 DB 및 환경 | Vector DB 구축 및 관리 |
+
+<br>
+
+| | | 
 | --- | --- |
-| 애플리케이션 & MLOps | API 설계, Docker, 클라우드 배포 |
-| RAG 로직 개발 | LangChain/LlamaIndex 체인 설계, 검색 최적화 |
-| 프롬프트 및 평가 | 환각 방지, 성능 지표(Relevance, Faithfulness) 측정 |
-| 데이터 엔지니어링 | 문서 수집, 기술 문서 Chunking 전략 수립 |
-| 벡터 DB 및 환경 | Vector DB 구축 및 관리 |
+| **Solar API** | `https://www.upstage.ai/pricing` (P.7) 링크 참고 |
+| **Streamlit** | `demo.py`를 통해 UI 구현 및 `main.py`와 통합 (P.6, P.7) |
 
 
-| **API 사용** | **Solar API** 사용 확정 | `https://www.upstage.ai/pricing` (P.7) 링크 참고하여 API 키 발급 및 관리 |
-| **UI 개발** | **Gradio / Streamlit** 중 택 1 | `demo.py`를 통해 UI 구현 및 `main.py`와 통합 (P.6, P.7) |
-
-
-
+<br>
 
 
 # 기술 문서 기반 RAG 챗봇 구축 프로젝트
@@ -31,7 +34,6 @@
 프로젝트의 모듈별 역할은 아래와 같습니다.
 
 ```
-├── .github/
 ├── data/
 │   ├── raw/
 │   └── tests/
@@ -48,9 +50,7 @@
 ├── vectorstore/                   # ChromaDB 등 로컬 Vector DB 저장소 (팀원 5)
 ├── .env.example                   # 환경 변수 설정 예시 (API 키)
 ├── .gitignore                     
-├── environment.yml                # Conda 환경 설정 파일 (Conda 사용자용)
 ├── requirements.txt               # Pip 의존성 라이브러리 목록 (Pip 사용자용)
-├── docker-compose.yml             # Docker 통합 실행 설정 파일 (팀장)
 ├── Dockerfile                     # Docker 이미지 빌드 파일 (팀장)
 └── README.md
 ```

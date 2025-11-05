@@ -1,44 +1,58 @@
-# docker-compose.yml
-
 version: '3.8'
 
 services:
-  # 1. RAG API 서버 (너의 담당)
-  rag_api:
-    build: . # 현재 디렉토리의 Dockerfile 사용
-    container_name: rag_chatbot_api
-    
-    # 8000번 포트 연결
+
+  chromadb:
+    # 💡 [버전 유지]: 0.4.24 버전 사용
+    image: chromadb/chroma:0.4.24 
+    container_name: chroma-server
+    ports: 
+      - "8001:8000"
+    volumes:
+      - chroma_data:/app/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE 
+      # CHROMA_API_IMPL, CHROMA_API_PORT, ALLOW_RESET 등 최신 변수는 모두 삭제
+
+  fastapi-api:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: fastapi-rag-api 
     ports:
       - "8000:8000"
-      
-    # .env 파일에서 환경 변수(SOLAR_API_KEY 등) 로드
-    env_file:
-      - .env
-      
-    # DB가 먼저 실행되도록 의존성 설정
-    depends_on:
-      - vector_db 
-      
-    # DB 컨테이너의 이름을 환경 변수로 주입 (DB 연결 시 사용)
     environment:
-      - CHROMA_HOST=vector_db 
+      - UPSTAGE_API_KEY=${UPSTAGE_API_KEY}
+      - CHROMA_HOST=chromadb 
       - CHROMA_PORT=8000
-
-  # 2. Vector DB (팀원 5의 담당 - ChromaDB 독립 서버 모드)
-  vector_db:
-    image: chromadb/chroma:latest # 공식 ChromaDB Docker 이미지
-    container_name: chroma_vector_db
+      - CHROMA_API_IMPL=rest 
+    depends_on:
+      chromadb:
+        condition: service_started 
     
-    # ChromaDB의 기본 포트 8000을 호스트의 8001번 포트에 연결 (충돌 방지)
-    ports:
-      - "8001:8000" 
-      
-    # 벡터 DB 데이터 영구 저장을 위한 볼륨 설정 (데이터 유실 방지)
-    volumes:
-      - chroma_data:/app/chroma/data 
+    command: ["sh", "-c", "sleep 5 && uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 1"] 
 
-# 볼륨 정의 (영구 데이터 저장소)
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    
+  streamlit-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: streamlit-rag-ui
+    ports:
+      - "8501:8501"
+    environment:
+      - FASTAPI_URL=http://fastapi-rag-api:8000 
+    depends_on:
+      fastapi-api:
+        condition: service_started
+        
+    command: streamlit run src/streamlit_app.py --server.port 8501 --server.address 0.0.0.0
+
 volumes:
   chroma_data:
-    driver: local

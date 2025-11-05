@@ -3,19 +3,22 @@ version: '3.8'
 services:
 
   chromadb:
-    image: chromadb/chroma:latest
+    # 💡 [버전 유지]: 0.4.24 버전 사용
+    image: chromadb/chroma:0.4.24 
     container_name: chroma-server
+    ports: 
+      - "8001:8000"
     volumes:
       - chroma_data:/app/chroma/chroma
     environment:
       - IS_PERSISTENT=TRUE 
-      - ALLOW_RESET=TRUE
+      # CHROMA_API_IMPL, CHROMA_API_PORT, ALLOW_RESET 등 최신 변수는 모두 삭제
 
   fastapi-api:
     build: 
       context: .
       dockerfile: Dockerfile
-    container_name: fastapi-rag-api # ⬅️ 실제 컨테이너 이름
+    container_name: fastapi-rag-api 
     ports:
       - "8000:8000"
     environment:
@@ -27,7 +30,7 @@ services:
       chromadb:
         condition: service_started 
     
-    command: ["sh", "-c", "sleep 5 && python start_api.py"] # ChromaDB 안정화를 위한 지연 유지
+    command: ["sh", "-c", "sleep 5 && uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 1"] 
 
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -35,7 +38,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-      
+    
   streamlit-ui:
     build:
       context: .

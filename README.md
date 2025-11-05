@@ -10,6 +10,13 @@
 ## 벡터 데이터베이스 검색 방법: 
 - vectorDB_load.ipynb 파일 열어서 실행
 
+## 데이터 Scraping 방법:
+
+- data_scraping3_share.ipynb 파일 열어서 실행<br>
+- langchain 기술 문서 사이트 주소:
+- https://docs.langchain.com/oss/python/langchain/overview
+
+
 역할분담 세부화
 
 | **팀원** | **주력 역할** | **세부 책임 스펙 (Deliverables)** |

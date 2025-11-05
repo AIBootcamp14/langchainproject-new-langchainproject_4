@@ -7,7 +7,7 @@
 - 저장된 최신 벡터 데이터베이스 로드하고 검색해 볼 수 있는 코드는 vectorDB_load.ipynb
 - 벡터 데이터베이스 저장했던 코드는 vectorDB.ipynb
 
-#사용 방법: 
+## 사용 방법: 
 - vectorDB_load.ipynb 파일 열어서 실행
 
 역할분담 세부화
